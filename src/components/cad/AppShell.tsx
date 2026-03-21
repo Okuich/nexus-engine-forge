@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Activity, Bell, Settings, Cpu, RotateCcw } from 'lucide-react';
+import { Activity, Bell, Settings, Cpu, RotateCcw, Droplets } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { CADViewer } from './CADViewer';
 import { AnalysisPanel } from './AnalysisPanel';
@@ -7,13 +7,15 @@ import { UploadOverlay } from './UploadOverlay';
 import { useAppStore } from '@/store/appStore';
 
 export function AppShell() {
-  const { demoPhase, setDemoPhase, setUploadedFile, setAnalysisResult, setUploadProgress } = useAppStore();
+  const { demoPhase, setDemoPhase, setUploadedFile, setAnalysisResult, setUploadProgress, setOptimizationResult, setAnalysisError } = useAppStore();
 
   const handleReset = () => {
     setDemoPhase('idle');
     setUploadedFile(null);
     setAnalysisResult(null);
     setUploadProgress(0);
+    setOptimizationResult(null);
+    setAnalysisError(null);
   };
 
   return (
@@ -26,13 +28,13 @@ export function AppShell() {
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Cpu className="w-4.5 h-4.5 text-primary" />
+            <Droplets className="w-4.5 h-4.5 text-primary" />
             <span className="text-sm font-semibold tracking-tight text-foreground">
-              FORGE<span className="text-primary">CAD</span>
+              mid<span className="text-primary">water</span>
             </span>
           </div>
           <div className="w-px h-5 bg-border" />
-          <span className="text-xs text-muted-foreground font-mono">v2.4.1</span>
+          <span className="text-xs text-muted-foreground font-mono">v1.0</span>
         </div>
 
         <div className="flex items-center gap-1">
@@ -48,12 +50,11 @@ export function AppShell() {
             </motion.button>
           )}
           <div className="flex items-center gap-2 mr-3 px-2.5 py-1 rounded-md bg-secondary/50">
-            <Activity className="w-3.5 h-3.5 text-success" />
-            <span className="text-xs font-mono text-muted-foreground">GPU: 42% · RAM: 6.1GB</span>
+            <Activity className="w-3.5 h-3.5 text-accent" />
+            <span className="text-xs font-mono text-muted-foreground">System Ready</span>
           </div>
           <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors relative">
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
           </button>
           <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
             <Settings className="w-4 h-4" />
