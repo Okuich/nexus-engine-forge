@@ -38,16 +38,15 @@ export default function Marketplace() {
         </div>
         <div className="flex items-center gap-3">
           <CreateRFQDialog onSubmit={marketplace.createRFQ} loading={marketplace.loading} />
-        </div>
-        {marketplace.error && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded-md font-mono"
-          >
-            {marketplace.error}
-          </motion.div>
-        )}
+          {marketplace.error && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded-md font-mono"
+            >
+              {marketplace.error}
+            </motion.div>
+          )}
         </div>
       </header>
 
