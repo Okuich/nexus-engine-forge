@@ -3,7 +3,6 @@ import type {
   TrainingJob,
   EpochMetric,
   StartTrainingRequest,
-  DEFAULT_TRAINING_CONFIG,
 } from './types';
 
 const MAX_RETRIES = 3;
@@ -27,8 +26,8 @@ async function withRetry<T>(fn: () => Promise<T>, retries = MAX_RETRIES): Promis
 // ─── Job CRUD ───────────────────────────────────────────────────
 
 export async function createTrainingJob(req: StartTrainingRequest): Promise<TrainingJob> {
-  const { data, error } = await withRetry(() =>
-    supabase
+  return withRetry(async () => {
+    const { data, error } = await supabase
       .from('training_jobs')
       .insert({
         name: req.name,
@@ -38,62 +37,66 @@ export async function createTrainingJob(req: StartTrainingRequest): Promise<Trai
         epochs_total: req.config?.epochs ?? 100,
       })
       .select()
-      .single()
-  );
-  if (error) throw new Error(error.message);
-  return data as unknown as TrainingJob;
+      .single();
+    if (error) throw new Error(error.message);
+    return data as unknown as TrainingJob;
+  });
 }
 
 export async function fetchTrainingJobs(): Promise<TrainingJob[]> {
-  const { data, error } = await withRetry(() =>
-    supabase
+  return withRetry(async () => {
+    const { data, error } = await supabase
       .from('training_jobs')
       .select('*')
-      .order('created_at', { ascending: false })
-  );
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as TrainingJob[];
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as TrainingJob[];
+  });
 }
 
 export async function fetchTrainingJob(id: string): Promise<TrainingJob> {
-  const { data, error } = await withRetry(() =>
-    supabase.from('training_jobs').select('*').eq('id', id).single()
-  );
-  if (error) throw new Error(error.message);
-  return data as unknown as TrainingJob;
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('training_jobs')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) throw new Error(error.message);
+    return data as unknown as TrainingJob;
+  });
 }
 
 export async function fetchJobMetrics(jobId: string): Promise<EpochMetric[]> {
-  const { data, error } = await withRetry(() =>
-    supabase
+  return withRetry(async () => {
+    const { data, error } = await supabase
       .from('training_metrics')
       .select('*')
       .eq('job_id', jobId)
-      .order('epoch', { ascending: true })
-  );
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as EpochMetric[];
+      .order('epoch', { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as EpochMetric[];
+  });
 }
 
 // ─── Training Trigger ───────────────────────────────────────────
 
 export async function startTraining(jobId: string): Promise<void> {
-  const { error } = await withRetry(() =>
-    supabase.functions.invoke('ml-train', {
+  return withRetry(async () => {
+    const { error } = await supabase.functions.invoke('ml-train', {
       body: { action: 'start', job_id: jobId },
-    })
-  );
-  if (error) throw new Error(error.message);
+    });
+    if (error) throw new Error(error.message);
+  });
 }
 
 export async function cancelTraining(jobId: string): Promise<void> {
-  const { error } = await withRetry(() =>
-    supabase
+  return withRetry(async () => {
+    const { error } = await supabase
       .from('training_jobs')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() } as any)
-      .eq('id', jobId)
-  );
-  if (error) throw new Error(error.message);
+      .eq('id', jobId);
+    if (error) throw new Error(error.message);
+  });
 }
 
 // ─── Realtime Subscription ──────────────────────────────────────
