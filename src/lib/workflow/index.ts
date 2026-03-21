@@ -16,6 +16,5 @@ export type {
   GanttBar,
   PlanRisk,
   ResourceType,
-  CATEGORY_COLORS,
 } from './types';
 export { CATEGORY_COLORS } from './types';
