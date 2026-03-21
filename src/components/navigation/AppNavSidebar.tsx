@@ -18,6 +18,9 @@ import type { AppRole } from '@/lib/auth/rbac';
 import {
   Box,
   Brain,
+  Building2,
+  Check,
+  ChevronsUpDown,
   FlaskConical,
   Workflow,
   ShieldCheck,
@@ -32,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
