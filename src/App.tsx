@@ -32,6 +32,7 @@ const App = () => (
             <Route path="/pipeline" element={<ProtectedRoute><MLPipeline /></ProtectedRoute>} />
             <Route path="/prospects" element={<ProtectedRoute><Prospects /></ProtectedRoute>} />
             <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
+            <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
