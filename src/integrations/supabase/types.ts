@@ -242,6 +242,7 @@ export type Database = {
           created_at: string
           employee_range: string | null
           id: string
+          lead_status: string
           notes: string | null
           outreach_email: string | null
           specialties: string | null
@@ -259,6 +260,7 @@ export type Database = {
           created_at?: string
           employee_range?: string | null
           id?: string
+          lead_status?: string
           notes?: string | null
           outreach_email?: string | null
           specialties?: string | null
@@ -276,6 +278,7 @@ export type Database = {
           created_at?: string
           employee_range?: string | null
           id?: string
+          lead_status?: string
           notes?: string | null
           outreach_email?: string | null
           specialties?: string | null
