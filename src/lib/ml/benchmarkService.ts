@@ -44,30 +44,32 @@ export async function fetchBenchmarks(limit = 50): Promise<BenchmarkResult[]> {
 }
 
 export async function submitBenchmark(sub: BenchmarkSubmission): Promise<BenchmarkResult> {
+  const row: Record<string, unknown> = {
+    model_type: sub.modelType,
+    dataset_name: sub.datasetName,
+    sample_count: sub.sampleCount,
+    mae: sub.mae,
+    latency_mean_ms: sub.latencyMeanMs,
+    metadata: sub.metadata ?? {},
+  };
+  if (sub.jobId) row.job_id = sub.jobId;
+  if (sub.modelVersionId) row.model_version_id = sub.modelVersionId;
+  if (sub.mse != null) row.mse = sub.mse;
+  if (sub.rmse != null) row.rmse = sub.rmse;
+  if (sub.mape != null) row.mape = sub.mape;
+  if (sub.valLoss != null) row.val_loss = sub.valLoss;
+  if (sub.trainLoss != null) row.train_loss = sub.trainLoss;
+  if (sub.accuracy != null) row.accuracy = sub.accuracy;
+  if (sub.f1Score != null) row.f1_score = sub.f1Score;
+  if (sub.latencyP50Ms != null) row.latency_p50_ms = sub.latencyP50Ms;
+  if (sub.latencyP95Ms != null) row.latency_p95_ms = sub.latencyP95Ms;
+  if (sub.latencyP99Ms != null) row.latency_p99_ms = sub.latencyP99Ms;
+  if (sub.throughputRps != null) row.throughput_rps = sub.throughputRps;
+  if (sub.gpuMemoryMb != null) row.gpu_memory_mb = sub.gpuMemoryMb;
+
   const { data, error } = await supabase
     .from('model_benchmarks')
-    .insert({
-      job_id: sub.jobId ?? null,
-      model_version_id: sub.modelVersionId ?? null,
-      model_type: sub.modelType,
-      dataset_name: sub.datasetName,
-      sample_count: sub.sampleCount,
-      mae: sub.mae,
-      mse: sub.mse ?? null,
-      rmse: sub.rmse ?? null,
-      mape: sub.mape ?? null,
-      val_loss: sub.valLoss ?? null,
-      train_loss: sub.trainLoss ?? null,
-      accuracy: sub.accuracy ?? null,
-      f1_score: sub.f1Score ?? null,
-      latency_mean_ms: sub.latencyMeanMs,
-      latency_p50_ms: sub.latencyP50Ms ?? null,
-      latency_p95_ms: sub.latencyP95Ms ?? null,
-      latency_p99_ms: sub.latencyP99Ms ?? null,
-      throughput_rps: sub.throughputRps ?? null,
-      gpu_memory_mb: sub.gpuMemoryMb ?? null,
-      metadata: sub.metadata ?? {},
-    })
+    .insert(row as any)
     .select()
     .single();
 
