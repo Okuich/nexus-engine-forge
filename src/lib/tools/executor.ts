@@ -247,12 +247,91 @@ const escalate: ToolHandler<EscalateInput, EscalateOutput> = async (input) => {
 
   return ok('escalate', result, Math.round(performance.now() - start));
 };
+// ─── match_suppliers ────────────────────────────────────────────
+
+interface MatchSuppliersInput {
+  material: string;
+  process?: string;
+  maxComplexity?: number;
+  region?: string;
+  certifications?: string[];
+}
+
+interface MatchedSupplier {
+  id: string;
+  companyName: string;
+  qualityRating: number;
+  leadTimeDays: number;
+  pricingMultiplier: number;
+  matchScore: number;
+}
+
+const matchSuppliers: ToolHandler<MatchSuppliersInput, { suppliers: MatchedSupplier[] } | { error: string }> = async (input) => {
+  const start = performance.now();
+
+  let query = supabase
+    .from('supplier_profiles')
+    .select('*')
+    .eq('active', true)
+    .contains('materials', [input.material]);
+
+  if (input.process) {
+    query = query.contains('processes', [input.process]);
+  }
+  if (input.region) {
+    query = query.eq('region', input.region);
+  }
+
+  const { data, error } = await query.limit(20);
+
+  if (error) {
+    return fail('match_suppliers', { error: error.message }, Math.round(performance.now() - start));
+  }
+
+  if (!data || data.length === 0) {
+    return ok('match_suppliers', { suppliers: [] }, Math.round(performance.now() - start), ['No matching suppliers found']);
+  }
+
+  const maxComplexity = input.maxComplexity ?? 0.8;
+  const requiredCerts = new Set(input.certifications ?? []);
+
+  const scored: MatchedSupplier[] = data
+    .filter(s => Number(s.max_complexity) >= maxComplexity)
+    .map(s => {
+      let score = Number(s.quality_rating) * 30;
+      score += (1 / Math.max(Number(s.pricing_multiplier), 0.5)) * 25;
+      score += (1 / Math.max(s.lead_time_days, 1)) * 20;
+
+      // Cert bonus
+      const supplierCerts = s.certifications ?? [];
+      if (requiredCerts.size > 0) {
+        const matched = supplierCerts.filter((c: string) => requiredCerts.has(c)).length;
+        score += (matched / requiredCerts.size) * 25;
+      } else {
+        score += supplierCerts.length * 5;
+      }
+
+      return {
+        id: s.id,
+        companyName: s.company_name,
+        qualityRating: Number(s.quality_rating),
+        leadTimeDays: s.lead_time_days,
+        pricingMultiplier: Number(s.pricing_multiplier),
+        matchScore: Math.round(score * 100) / 100,
+      };
+    })
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 5);
+
+  return ok('match_suppliers', { suppliers: scored }, Math.round(performance.now() - start));
+};
 
 // ─── Tool Router ────────────────────────────────────────────────
 
 const TOOL_HANDLERS: Record<string, ToolHandler<any, any>> = {
   check_order: checkOrder,
   recompute_quote: recomputeQuote,
+  match_suppliers: matchSuppliers,
   refund,
   escalate,
 };
