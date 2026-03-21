@@ -87,6 +87,7 @@ interface AppState {
   // Jobs
   jobs: Job[];
   files: FileItem[];
+}
 
 const MOCK_ANALYSIS: AnalysisResult = {
   manufacturability: 72,
