@@ -248,15 +248,165 @@ async function executeWithCacheAndRetry(
   return { success: false, data: { error: "Max retries exceeded" }, retries: MAX_RETRIES, cached: false };
 }
 
+// ─── Structured Planner ──────────────────────────────────────────
+
+interface PlanStep {
+  id: string;
+  agent: AgentType;
+  tool: string;
+  input: Record<string, unknown>;
+  depends_on: string[];
+  rationale: string;
+}
+
+interface ExecutionPlan {
+  goal: string;
+  steps: PlanStep[];
+  reasoning: string;
+}
+
+const PLANNER_SCHEMA = {
+  name: "create_execution_plan",
+  description: "Create a minimal, logically sequenced execution plan from the user request. Each step maps to exactly one tool. Use depends_on to express data flow between steps. Minimize total steps — only include tools that directly serve the user's goal.",
+  parameters: {
+    type: "object",
+    properties: {
+      goal: { type: "string", description: "One-sentence summary of user's intent" },
+      reasoning: { type: "string", description: "Brief chain-of-thought: why these steps in this order, and why no fewer steps would suffice" },
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Unique step ID like s1, s2, ..." },
+            agent: { type: "string", enum: ["geometry", "cost", "optimization", "simulation", "workflow", "document"] },
+            tool: { type: "string", description: "Exact tool name from the registry" },
+            input: { type: "object", description: "Tool input parameters. Use $ref:stepId.field to reference output from a previous step" },
+            depends_on: { type: "array", items: { type: "string" }, description: "Step IDs this depends on (empty = can run immediately)" },
+            rationale: { type: "string", description: "Why this step is needed" },
+          },
+          required: ["id", "agent", "tool", "input", "depends_on", "rationale"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["goal", "reasoning", "steps"],
+    additionalProperties: false,
+  },
+};
+
+const PLANNER_SYSTEM_PROMPT = `You are a planning engine for FORGE CAD Copilot. Given a user request, produce a MINIMAL execution plan.
+
+AVAILABLE TOOLS BY AGENT:
+• geometry: analyze_faces, analyze_edges, detect_holes, measure_thickness, check_draft_angles, build_topology_graph
+• cost: estimate_material_cost, estimate_machining_time, estimate_total_cost, quantity_price_breaks
+• optimization: run_topology_optimization, suggest_design_changes, run_parameter_sweep
+• simulation: run_stress_analysis, run_thermal_analysis, predict_fatigue_life, check_manufacturability
+• workflow: generate_process_plan, select_fixtures, estimate_lead_time, define_quality_checkpoints
+• document: generate_quote, generate_inspection_report, generate_material_cert, generate_process_sheet
+
+RULES:
+1. MINIMAL STEPS: Only include tools that directly answer the user's question. Never add "nice-to-have" steps.
+2. LOGICAL SEQUENCING: If step B needs output from step A, add A's id to B's depends_on array. Independent steps have empty depends_on and will run in parallel.
+3. INPUT REFERENCES: When a step needs data from a prior step, use "$ref:stepId.field" syntax in the input value.
+4. CONTEXT: Current model is Turbine_Housing_v4.step, material Ti-6Al-4V, 47 faces, 12 holes, volume 284.3cm³.
+5. For simple questions that don't need tools, return an empty steps array.`;
+
+async function runPlanner(
+  messages: { role: string; content: string }[],
+  apiKey: string,
+): Promise<ExecutionPlan> {
+  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [{ role: "system", content: PLANNER_SYSTEM_PROMPT }, ...messages],
+      tools: [{ type: "function", function: PLANNER_SCHEMA }],
+      tool_choice: { type: "function", function: { name: "create_execution_plan" } },
+      stream: false,
+    }),
+  });
+
+  if (!resp.ok) {
+    const s = resp.status;
+    throw new Error(s === 429 ? "RATE_LIMIT" : s === 402 ? "CREDITS_EXHAUSTED" : `PLANNER_ERROR:${s}`);
+  }
+
+  const data = await resp.json();
+  const tc = data.choices?.[0]?.message?.tool_calls?.[0];
+  if (!tc) {
+    return { goal: "conversational", steps: [], reasoning: "No tools needed" };
+  }
+
+  const plan: ExecutionPlan = JSON.parse(tc.function.arguments);
+
+  // Validate: ensure all tool names exist and deps reference valid step IDs
+  const stepIds = new Set(plan.steps.map(s => s.id));
+  for (const step of plan.steps) {
+    if (!AGENT_MAP[step.tool]) throw new Error(`Planner referenced unknown tool: ${step.tool}`);
+    for (const dep of step.depends_on) {
+      if (!stepIds.has(dep)) throw new Error(`Step ${step.id} depends on unknown step: ${dep}`);
+    }
+    // Check for circular deps (simple: no step can depend on itself or later steps)
+    const stepIdx = plan.steps.findIndex(s => s.id === step.id);
+    for (const dep of step.depends_on) {
+      const depIdx = plan.steps.findIndex(s => s.id === dep);
+      if (depIdx >= stepIdx) throw new Error(`Circular/forward dependency: ${step.id} -> ${dep}`);
+    }
+  }
+
+  return plan;
+}
+
 // ─── DAG Scheduler ───────────────────────────────────────────────
 
-interface ToolCall { id: string; function: { name: string; arguments: string } }
+function buildParallelGroups(steps: PlanStep[]): PlanStep[][] {
+  const groups: PlanStep[][] = [];
+  const completed = new Set<string>();
+  const remaining = [...steps];
 
-function buildDAG(toolCalls: ToolCall[]): string[][] {
-  // Simple: group independent calls together, chain dependent ones
-  // For now, all tool calls from a single LLM response are independent
-  const groups: string[][] = [toolCalls.map(tc => tc.id)];
+  while (remaining.length > 0) {
+    const ready = remaining.filter(s => s.depends_on.every(d => completed.has(d)));
+    if (ready.length === 0) {
+      // Deadlock — force remaining into a group
+      groups.push([...remaining]);
+      break;
+    }
+    groups.push(ready);
+    for (const s of ready) {
+      completed.add(s.id);
+      remaining.splice(remaining.indexOf(s), 1);
+    }
+  }
+
   return groups;
+}
+
+// Resolve $ref:stepId.field references in input
+function resolveInputRefs(
+  input: Record<string, unknown>,
+  results: Map<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const resolved: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(input)) {
+    if (typeof val === "string" && val.startsWith("$ref:")) {
+      const [stepId, ...fieldParts] = val.slice(5).split(".");
+      const stepResult = results.get(stepId);
+      if (stepResult) {
+        let value: unknown = stepResult;
+        for (const f of fieldParts) value = (value as any)?.[f];
+        resolved[key] = value ?? val;
+      } else {
+        resolved[key] = val;
+      }
+    } else if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+      resolved[key] = resolveInputRefs(val as Record<string, unknown>, results);
+    } else {
+      resolved[key] = val;
+    }
+  }
+  return resolved;
 }
 
 // ─── SSE Helper ──────────────────────────────────────────────────
@@ -264,6 +414,10 @@ function buildDAG(toolCalls: ToolCall[]): string[][] {
 function sseEvent(data: unknown): string {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
+
+// ─── Synthesis Prompt ────────────────────────────────────────────
+
+const SYNTHESIS_SYSTEM = `You are FORGE CAD Copilot. You've just executed an analysis plan. Synthesize the tool results into a clear, concise engineering response. Always cite specific numbers. Use markdown formatting. Be thorough but not verbose.`;
 
 // ─── Main Handler ────────────────────────────────────────────────
 
@@ -285,152 +439,131 @@ serve(async (req) => {
       );
     } catch { /* no DB persistence */ }
 
-    const systemPrompt = `You are FORGE CAD Copilot, a senior AI systems engineer for industrial CAD/CAM.
-You orchestrate 6 specialized agents:
-
-**Geometry Agent** 📐: analyze_faces, analyze_edges, detect_holes, measure_thickness, check_draft_angles, build_topology_graph
-**Cost Agent** 💰: estimate_material_cost, estimate_machining_time, estimate_total_cost, quantity_price_breaks
-**Optimization Agent** ⚡: run_topology_optimization, suggest_design_changes, run_parameter_sweep
-**Simulation Agent** 🔬: run_stress_analysis, run_thermal_analysis, predict_fatigue_life, check_manufacturability
-**Workflow Agent** 🔄: generate_process_plan, select_fixtures, estimate_lead_time, define_quality_checkpoints
-**Document Agent** 📄: generate_quote, generate_inspection_report, generate_material_cert, generate_process_sheet
-
-For complex queries, chain tools across agents. Always cite numbers from results. Use markdown.
-Current model: Turbine_Housing_v4.step (Ti-6Al-4V, 47 faces, 12 holes, 284.3cm³)`;
-
-    // ── Phase 1: LLM Planning ──
-    const planResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        tools: TOOL_DEFINITIONS,
-        stream: false,
-      }),
-    });
-
-    if (!planResponse.ok) {
-      const s = planResponse.status;
-      if (s === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (s === 402) return new Response(JSON.stringify({ error: "Credits exhausted" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error(`AI gateway error: ${s}`);
+    // ── Phase 1: LLM Planner ──
+    let plan: ExecutionPlan;
+    try {
+      plan = await runPlanner(messages, LOVABLE_API_KEY);
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg === "RATE_LIMIT") return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (msg === "CREDITS_EXHAUSTED") return new Response(JSON.stringify({ error: "Credits exhausted" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw e;
     }
 
-    const planData = await planResponse.json();
-    const choice = planData.choices?.[0];
-
-    // No tool calls → stream text response
-    if (!choice?.message?.tool_calls?.length) {
-      const text = choice?.message?.content || "Ready to analyze. What would you like to know?";
-      const body = new ReadableStream({
-        start(controller) {
-          const enc = new TextEncoder();
-          const words = text.split(" ");
-          let i = 0;
-          const iv = setInterval(() => {
-            if (i >= words.length) { controller.enqueue(enc.encode("data: [DONE]\n\n")); controller.close(); clearInterval(iv); return; }
-            controller.enqueue(enc.encode(sseEvent({ choices: [{ delta: { content: (i === 0 ? "" : " ") + words[i] } }] })));
-            i++;
-          }, 25);
-        },
+    // No tools needed → conversational response
+    if (plan.steps.length === 0) {
+      const chatResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [{ role: "system", content: SYNTHESIS_SYSTEM }, ...messages],
+          stream: true,
+        }),
       });
-      return new Response(body, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
+
+      if (!chatResp.ok || !chatResp.body) throw new Error("Chat response failed");
+      return new Response(chatResp.body, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
     }
 
-    // ── Phase 2: Validate, Build DAG, Execute ──
-    const toolCalls: ToolCall[] = choice.message.tool_calls;
-    const parallelGroups = buildDAG(toolCalls);
+    // ── Phase 2: Validate → DAG → Execute ──
+    const parallelGroups = buildParallelGroups(plan.steps);
 
     const body = new ReadableStream({
       async start(controller) {
         const enc = new TextEncoder();
         const emit = (d: unknown) => controller.enqueue(enc.encode(sseEvent(d)));
 
-        // Planning event
-        const agents = [...new Set(toolCalls.map(tc => AGENT_MAP[tc.function.name] || "geometry"))];
-        emit({ event: "planning", content: `Orchestrating ${toolCalls.length} tools across ${agents.length} agents: ${agents.join(", ")}`, data: { tool_count: toolCalls.length, agents } });
+        // Emit plan
+        const agents = [...new Set(plan.steps.map(s => s.agent))];
+        emit({
+          event: "plan_ready",
+          content: `📋 Plan: ${plan.goal}\n${plan.reasoning}`,
+          data: {
+            goal: plan.goal,
+            reasoning: plan.reasoning,
+            step_count: plan.steps.length,
+            agents,
+            parallel_groups: parallelGroups.length,
+            steps: plan.steps.map(s => ({ id: s.id, agent: s.agent, tool: s.tool, depends_on: s.depends_on, rationale: s.rationale })),
+          },
+        });
 
         // Validate all inputs
-        let hasValidationErrors = false;
-        for (const tc of toolCalls) {
-          let args: Record<string, unknown> = {};
-          try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* empty */ }
-          const errors = validateToolArgs(tc.function.name, args);
+        for (const step of plan.steps) {
+          const errors = validateToolArgs(step.tool, step.input);
           if (errors.length > 0) {
-            emit({ event: "validation", tool: tc.function.name, stepId: tc.id, content: `⚠ Validation: ${errors.map(e => e.message).join(", ")}`, data: { errors } });
-            hasValidationErrors = true;
+            emit({ event: "validation", agent: step.agent, tool: step.tool, stepId: step.id, content: `⚠ ${step.id}: ${errors.map(e => e.message).join(", ")}`, data: { errors } });
           }
         }
 
-        if (hasValidationErrors) {
-          emit({ event: "error", content: "Some tool inputs failed validation. Proceeding with available data." });
-        }
-
-        // Execute in parallel groups
-        const toolResults: { call_id: string; name: string; result: Record<string, unknown> }[] = [];
+        // Execute DAG groups
+        const stepResults = new Map<string, Record<string, unknown>>();
+        const toolResults: { step_id: string; tool: string; agent: string; result: Record<string, unknown>; cached: boolean; duration_ms: number }[] = [];
         let cacheHits = 0;
 
         for (let gi = 0; gi < parallelGroups.length; gi++) {
           const group = parallelGroups[gi];
           if (group.length > 1) {
-            emit({ event: "parallel_group", parallelGroup: gi, content: `Executing ${group.length} tools in parallel (group ${gi + 1})` });
+            emit({ event: "parallel_group", parallelGroup: gi, content: `⚡ Parallel group ${gi + 1}: ${group.map(s => s.tool).join(", ")}` });
           }
 
-          const promises = group.map(async (tcId) => {
-            const tc = toolCalls.find(t => t.id === tcId)!;
-            const toolName = tc.function.name;
-            let toolArgs: Record<string, unknown> = {};
-            try { toolArgs = JSON.parse(tc.function.arguments || "{}"); } catch { /* empty */ }
+          const promises = group.map(async (step) => {
+            const stepStart = Date.now();
+            // Resolve input references from prior step results
+            const resolvedInput = resolveInputRefs(step.input, stepResults);
 
-            const agent = AGENT_MAP[toolName] || "geometry";
+            emit({ event: "step_start", agent: step.agent, tool: step.tool, stepId: step.id, content: `${step.rationale}` });
 
-            emit({ event: "step_start", agent, tool: toolName, stepId: tc.id, content: `Running ${toolName}...` });
-
-            const result = await executeWithCacheAndRetry(toolName, toolArgs, supabaseAdmin, tenantId);
+            const result = await executeWithCacheAndRetry(step.tool, resolvedInput, supabaseAdmin, tenantId);
+            const duration = Date.now() - stepStart;
 
             if (result.cached) {
               cacheHits++;
-              emit({ event: "cache_hit", agent, tool: toolName, stepId: tc.id, content: `⚡ ${toolName} (cached)`, cached: true });
+              emit({ event: "cache_hit", agent: step.agent, tool: step.tool, stepId: step.id, content: `⚡ ${step.tool} [cached]`, cached: true });
             }
 
             if (result.success) {
-              emit({ event: "step_complete", agent, tool: toolName, stepId: tc.id, data: result.data, content: `✓ ${toolName}${result.retries > 0 ? ` (${result.retries} retries)` : ""}${result.cached ? " [cached]" : ""}` });
+              stepResults.set(step.id, result.data);
+              emit({ event: "step_complete", agent: step.agent, tool: step.tool, stepId: step.id, data: result.data, content: `✓ ${step.tool} (${duration}ms)${result.cached ? " [cached]" : ""}` });
             } else {
-              emit({ event: "step_error", agent, tool: toolName, stepId: tc.id, content: `✗ ${toolName}: ${(result.data as any).error}` });
+              emit({ event: "step_error", agent: step.agent, tool: step.tool, stepId: step.id, content: `✗ ${step.tool}: ${(result.data as any).error}` });
             }
 
-            toolResults.push({ call_id: tc.id, name: toolName, result: result.data });
+            toolResults.push({ step_id: step.id, tool: step.tool, agent: step.agent, result: result.data, cached: result.cached, duration_ms: duration });
           });
 
           await Promise.all(promises);
         }
 
-        // Store execution in memory
+        // Persist execution
         if (supabaseAdmin) {
-          const execRecord = {
+          const totalMs = Date.now() - startTime;
+          emit({ event: "memory_store", content: `💾 Execution: ${plan.steps.length} steps, ${cacheHits} cached, ${totalMs}ms total` });
+
+          supabaseAdmin.from("agent_executions").insert({
             tenant_id: tenantId || null,
-            goal: messages[messages.length - 1]?.content || "",
-            plan: toolCalls.map(tc => ({ id: tc.id, tool: tc.function.name, agent: AGENT_MAP[tc.function.name] })),
+            goal: plan.goal,
+            plan: { reasoning: plan.reasoning, steps: plan.steps },
             results: toolResults,
             status: "completed",
-            total_duration_ms: Date.now() - startTime,
+            total_duration_ms: totalMs,
             model_used: "google/gemini-3-flash-preview",
-            token_usage: { cache_hits: cacheHits },
+            token_usage: { cache_hits: cacheHits, parallel_groups: parallelGroups.length },
             completed_at: new Date().toISOString(),
-          };
-
-          emit({ event: "memory_store", content: `💾 Storing execution (${cacheHits} cache hits, ${Date.now() - startTime}ms)` });
-
-          supabaseAdmin.from("agent_executions").insert(execRecord).then(() => {});
+          }).then(() => {});
         }
 
         // ── Phase 3: LLM Synthesis ──
+        const toolSummary = toolResults.map(tr =>
+          `[${tr.agent}/${tr.tool}] (step ${tr.step_id}${tr.cached ? ", cached" : ""}):\n${JSON.stringify(tr.result, null, 1)}`
+        ).join("\n\n");
+
         const synthesisMessages = [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: SYNTHESIS_SYSTEM },
           ...messages,
-          choice.message,
-          ...toolResults.map(tr => ({ role: "tool" as const, tool_call_id: tr.call_id, content: JSON.stringify(tr.result) })),
+          { role: "assistant", content: `I executed a ${plan.steps.length}-step plan: ${plan.goal}\n\nPlan reasoning: ${plan.reasoning}\n\nTool results:\n${toolSummary}` },
+          { role: "user", content: "Synthesize these results into a clear engineering response for the user. Cite specific numbers." },
         ];
 
         const synthesisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
