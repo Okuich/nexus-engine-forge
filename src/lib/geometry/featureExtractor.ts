@@ -407,17 +407,24 @@ export function extractGeometryFeatures(geometry: THREE.BufferGeometry): Geometr
  */
 export function extractSceneFeatures(geometries: THREE.BufferGeometry[]): GeometryFeatureSet {
   if (geometries.length === 0) {
+    const emptyGraph: FaceAdjacencyGraph = {
+      numNodes: 0, numEdges: 0, adjacency: [],
+      edgeIndex: [[], []], edgeAttr: [],
+      neighbors: new Map(), degree: [],
+    };
     return {
-      faces: [], edges: [],
+      faces: [], edges: [], graph: emptyGraph,
       stats: {
         totalFaces: 0, totalEdges: 0, totalVertices: 0,
         totalArea: 0, volume: 0,
         boundingBox: { min: [0, 0, 0], max: [0, 0, 0] },
         surfaceClassDistribution: { planar: 0, cylindrical: 0, spherical: 0, conical: 0, toroidal: 0, freeform: 0 },
         curvatureStats: { meanGaussian: 0, meanMean: 0, maxAbsCurvature: 0, variance: 0 },
+        connectedComponents: 0,
       },
       featureMatrix: [],
       edgeIndex: [[], []],
+      edgeAttr: [],
     };
   }
 
