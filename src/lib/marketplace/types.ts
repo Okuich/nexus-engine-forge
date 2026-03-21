@@ -160,6 +160,7 @@ export interface CreateRFQRequest {
 
 export interface SubmitQuoteRequest {
   rfqId: string;
+  supplierId?: string;
   unitPriceUsd: number;
   leadTimeDays: number;
   notes?: string;
