@@ -160,12 +160,15 @@ export interface AgentChatMessage {
 }
 
 export interface AgentActivity {
-  type: 'planning' | 'validating' | 'executing' | 'tool_call' | 'result' | 'cache_hit' | 'memory_store' | 'error';
+  type: 'planning' | 'validating' | 'executing' | 'tool_call' | 'result' | 'cache_hit' | 'memory_store'
+    | 'output_validation' | 'step_retry' | 'consistency_check' | 'confidence_report' | 'error';
   agent?: AgentType;
   tool?: string;
   stepId?: string;
   details?: string;
   parallelGroup?: number;
+  confidence?: number;
+  confidenceGrade?: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 // ─── Agent Registry ──────────────────────────────────────────────
