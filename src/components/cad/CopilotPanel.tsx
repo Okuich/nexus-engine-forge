@@ -3,7 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Send, X, Sparkles, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
 import { streamAgentChat, type StreamEvent } from '@/lib/agents/client';
-import { AGENT_INFO, type AgentType } from '@/lib/agents/types';
+import { AGENT_REGISTRY, type AgentType } from '@/lib/agents/types';
+
+const AGENT_INFO = Object.fromEntries(
+  Object.entries(AGENT_REGISTRY).map(([k, v]) => [k, { name: v.name, description: v.description, icon: v.icon }])
+) as Record<AgentType, { name: string; description: string; icon: string }>;
 
 const suggestions = [
   'Full geometry analysis',

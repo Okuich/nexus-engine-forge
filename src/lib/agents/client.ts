@@ -1,37 +1,52 @@
 /**
- * Agent API client — streams responses from the agent orchestrator edge function.
+ * Agent Orchestrator Client — streams events from the multi-agent system.
+ * Handles SSE parsing, error recovery, and typed event dispatch.
  */
-import type { AgentActivity } from './types';
+import type { AgentType } from './types';
 
 const AGENT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/agent-orchestrator`;
 
 export interface StreamEvent {
-  type: 'planning' | 'step_start' | 'step_complete' | 'step_error' | 'token' | 'done' | 'error';
-  agent?: string;
+  type: 'planning' | 'plan_ready' | 'validation' | 'step_start' | 'step_complete' | 'step_error'
+    | 'cache_hit' | 'parallel_group' | 'memory_store' | 'token' | 'done' | 'error';
+  agent?: AgentType;
   tool?: string;
   stepId?: string;
   content?: string;
   data?: Record<string, unknown>;
+  parallelGroup?: number;
+  cached?: boolean;
+}
+
+export interface StreamChatOptions {
+  messages: { role: string; content: string }[];
+  context?: {
+    tenantId?: string;
+    modelId?: string;
+    material?: string;
+  };
+  onEvent: (event: StreamEvent) => void;
+  onDelta: (text: string) => void;
+  onDone: () => void;
+  signal?: AbortSignal;
 }
 
 export async function streamAgentChat({
   messages,
+  context,
   onEvent,
   onDelta,
   onDone,
-}: {
-  messages: { role: string; content: string }[];
-  onEvent: (event: StreamEvent) => void;
-  onDelta: (text: string) => void;
-  onDone: () => void;
-}) {
+  signal,
+}: StreamChatOptions) {
   const resp = await fetch(AGENT_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, context }),
+    signal,
   });
 
   if (!resp.ok || !resp.body) {
@@ -41,7 +56,7 @@ export async function streamAgentChat({
       return;
     }
     if (resp.status === 402) {
-      onEvent({ type: 'error', content: 'AI credits exhausted. Please add funds in Settings → Workspace → Usage.' });
+      onEvent({ type: 'error', content: 'AI credits exhausted. Add funds in Settings → Workspace → Usage.' });
       onDone();
       return;
     }
@@ -67,21 +82,14 @@ export async function streamAgentChat({
       if (!line.startsWith('data: ')) continue;
 
       const jsonStr = line.slice(6).trim();
-      if (jsonStr === '[DONE]') {
-        onDone();
-        return;
-      }
+      if (jsonStr === '[DONE]') { onDone(); return; }
 
       try {
         const parsed = JSON.parse(jsonStr);
-
-        // Handle agent events
         if (parsed.event) {
           onEvent(parsed as StreamEvent);
           continue;
         }
-
-        // Handle standard chat completion tokens
         const content = parsed.choices?.[0]?.delta?.content;
         if (content) onDelta(content);
       } catch {
