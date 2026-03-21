@@ -77,7 +77,7 @@ function NavGroup({ label, items, collapsed }: NavGroupProps) {
   const isGroupActive = visibleItems.some((i) => location.pathname === i.url);
 
   return (
-    <SidebarGroup defaultOpen={isGroupActive}>
+    <SidebarGroup>
       <SidebarGroupLabel className="text-muted-foreground">{label}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
