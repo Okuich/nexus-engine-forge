@@ -103,35 +103,16 @@ export function CopilotPanel() {
     }
   }, [input, isStreaming, addMessage]);
 
-  if (!copilotOpen) {
-    return (
-      <motion.button
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        onClick={toggleCopilot}
-        className="absolute right-4 top-4 p-3 rounded-xl bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-shadow"
-      >
-        <Bot className="w-5 h-5" />
-      </motion.button>
-    );
-  }
-
   return (
-    <motion.div
-      initial={{ width: 0, opacity: 0 }}
-      animate={{ width: 340, opacity: 1 }}
-      exit={{ width: 0, opacity: 0 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className="h-full bg-card border-l border-border flex flex-col shrink-0 overflow-hidden"
-    >
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="panel-header">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <span className="panel-title">Midwater AI</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Midwater AI</span>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className={isStreaming ? 'status-dot-warning' : 'status-dot-online'} />
               <span className="text-[10px] text-muted-foreground font-mono">
@@ -140,12 +121,6 @@ export function CopilotPanel() {
             </div>
           </div>
         </div>
-        <button
-          onClick={toggleCopilot}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Messages */}
@@ -207,7 +182,7 @@ export function CopilotPanel() {
       )}
 
       {/* Input */}
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border shrink-0">
         <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2">
           <input
             value={input}
@@ -230,6 +205,6 @@ export function CopilotPanel() {
           </button>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
