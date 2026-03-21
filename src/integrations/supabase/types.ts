@@ -14,6 +14,100 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_executions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          goal: string
+          id: string
+          model_used: string | null
+          plan: Json
+          results: Json
+          status: string
+          tenant_id: string | null
+          token_usage: Json | null
+          total_duration_ms: number | null
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          goal: string
+          id?: string
+          model_used?: string | null
+          plan?: Json
+          results?: Json
+          status?: string
+          tenant_id?: string | null
+          token_usage?: Json | null
+          total_duration_ms?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          goal?: string
+          id?: string
+          model_used?: string | null
+          plan?: Json
+          results?: Json
+          status?: string
+          tenant_id?: string | null
+          token_usage?: Json | null
+          total_duration_ms?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_executions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_memory: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          key: string
+          memory_type: string
+          tenant_id: string | null
+          ttl_seconds: number | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          key: string
+          memory_type: string
+          tenant_id?: string | null
+          ttl_seconds?: number | null
+          value: Json
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          key?: string
+          memory_type?: string
+          tenant_id?: string | null
+          ttl_seconds?: number | null
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memory_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
