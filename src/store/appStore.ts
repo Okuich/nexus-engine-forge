@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { GeometryFeatureSet } from '@/lib/geometry/featureExtractor';
 
 export interface Job {
   id: string;
