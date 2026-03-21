@@ -230,6 +230,57 @@ export type Database = {
         }
         Relationships: []
       }
+      prospect_companies: {
+        Row: {
+          certifications: string | null
+          city: string | null
+          company_name: string
+          contact_email: string | null
+          contact_linkedin: string | null
+          contact_name: string | null
+          contact_title: string | null
+          created_at: string
+          employee_range: string | null
+          id: string
+          notes: string | null
+          specialties: string | null
+          state: string | null
+          website: string | null
+        }
+        Insert: {
+          certifications?: string | null
+          city?: string | null
+          company_name: string
+          contact_email?: string | null
+          contact_linkedin?: string | null
+          contact_name?: string | null
+          contact_title?: string | null
+          created_at?: string
+          employee_range?: string | null
+          id?: string
+          notes?: string | null
+          specialties?: string | null
+          state?: string | null
+          website?: string | null
+        }
+        Update: {
+          certifications?: string | null
+          city?: string | null
+          company_name?: string
+          contact_email?: string | null
+          contact_linkedin?: string | null
+          contact_name?: string | null
+          contact_title?: string | null
+          created_at?: string
+          employee_range?: string | null
+          id?: string
+          notes?: string | null
+          specialties?: string | null
+          state?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
       tenant_members: {
         Row: {
           id: string

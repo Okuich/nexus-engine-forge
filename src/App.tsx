@@ -10,6 +10,7 @@ import Login from "./pages/Login.tsx";
 import Signup from "./pages/Signup.tsx";
 import MLDashboard from "./pages/MLDashboard.tsx";
 import MLPipeline from "./pages/MLPipeline.tsx";
+import Prospects from "./pages/Prospects.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/ml" element={<ProtectedRoute><MLDashboard /></ProtectedRoute>} />
             <Route path="/pipeline" element={<ProtectedRoute><MLPipeline /></ProtectedRoute>} />
+            <Route path="/prospects" element={<ProtectedRoute><Prospects /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
