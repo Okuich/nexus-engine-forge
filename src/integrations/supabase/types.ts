@@ -205,6 +205,150 @@ export type Database = {
           },
         ]
       }
+      marketplace_orders: {
+        Row: {
+          buyer_id: string
+          created_at: string
+          currency: string
+          id: string
+          metadata: Json | null
+          platform_fee_pct: number
+          platform_fee_usd: number
+          quantity: number
+          quote_id: string | null
+          rfq_id: string | null
+          status: string
+          subtotal_usd: number
+          supplier_id: string
+          supplier_payout_usd: number
+          tax_usd: number
+          total_usd: number
+          unit_price_usd: number
+          updated_at: string
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string
+          currency?: string
+          id?: string
+          metadata?: Json | null
+          platform_fee_pct?: number
+          platform_fee_usd?: number
+          quantity?: number
+          quote_id?: string | null
+          rfq_id?: string | null
+          status?: string
+          subtotal_usd: number
+          supplier_id: string
+          supplier_payout_usd?: number
+          tax_usd?: number
+          total_usd: number
+          unit_price_usd: number
+          updated_at?: string
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          metadata?: Json | null
+          platform_fee_pct?: number
+          platform_fee_usd?: number
+          quantity?: number
+          quote_id?: string | null
+          rfq_id?: string | null
+          status?: string
+          subtotal_usd?: number
+          supplier_id?: string
+          supplier_payout_usd?: number
+          tax_usd?: number
+          total_usd?: number
+          unit_price_usd?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_orders_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "rfq_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_orders_rfq_id_fkey"
+            columns: ["rfq_id"]
+            isOneToOne: false
+            referencedRelation: "rfqs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_payments: {
+        Row: {
+          amount_usd: number
+          created_at: string
+          external_payment_id: string | null
+          failure_reason: string | null
+          id: string
+          metadata: Json | null
+          order_id: string
+          paid_at: string | null
+          payer_id: string
+          payment_method: string
+          platform_fee_usd: number
+          status: string
+          supplier_payout_usd: number
+          updated_at: string
+        }
+        Insert: {
+          amount_usd: number
+          created_at?: string
+          external_payment_id?: string | null
+          failure_reason?: string | null
+          id?: string
+          metadata?: Json | null
+          order_id: string
+          paid_at?: string | null
+          payer_id: string
+          payment_method?: string
+          platform_fee_usd?: number
+          status?: string
+          supplier_payout_usd?: number
+          updated_at?: string
+        }
+        Update: {
+          amount_usd?: number
+          created_at?: string
+          external_payment_id?: string | null
+          failure_reason?: string | null
+          id?: string
+          metadata?: Json | null
+          order_id?: string
+          paid_at?: string | null
+          payer_id?: string
+          payment_method?: string
+          platform_fee_usd?: number
+          status?: string
+          supplier_payout_usd?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_benchmarks: {
         Row: {
           accuracy: number | null
@@ -735,6 +879,70 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_payouts: {
+        Row: {
+          amount_usd: number
+          created_at: string
+          external_payout_id: string | null
+          id: string
+          metadata: Json | null
+          order_id: string
+          payment_id: string
+          payout_method: string
+          processed_at: string | null
+          status: string
+          supplier_id: string
+        }
+        Insert: {
+          amount_usd: number
+          created_at?: string
+          external_payout_id?: string | null
+          id?: string
+          metadata?: Json | null
+          order_id: string
+          payment_id: string
+          payout_method?: string
+          processed_at?: string | null
+          status?: string
+          supplier_id: string
+        }
+        Update: {
+          amount_usd?: number
+          created_at?: string
+          external_payout_id?: string | null
+          id?: string
+          metadata?: Json | null
+          order_id?: string
+          payment_id?: string
+          payout_method?: string
+          processed_at?: string | null
+          status?: string
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_payouts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_payouts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_payouts_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_profiles"
             referencedColumns: ["id"]
           },
         ]
