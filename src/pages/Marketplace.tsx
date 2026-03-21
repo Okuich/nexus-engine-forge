@@ -6,6 +6,7 @@ import { useMarketplace } from '@/hooks/useMarketplace';
 import { OpenRFQsTab } from '@/components/marketplace/OpenRFQsTab';
 import { MyQuotesTab } from '@/components/marketplace/MyQuotesTab';
 import { SupplierProfileTab } from '@/components/marketplace/SupplierProfileTab';
+import { CreateRFQDialog } from '@/components/marketplace/CreateRFQDialog';
 
 type Tab = 'rfqs' | 'quotes' | 'profile';
 
