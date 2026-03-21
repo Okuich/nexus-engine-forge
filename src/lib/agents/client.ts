@@ -7,8 +7,9 @@ import type { AgentType } from './types';
 const AGENT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/agent-orchestrator`;
 
 export interface StreamEvent {
-  type: 'planning' | 'plan_ready' | 'validation' | 'step_start' | 'step_complete' | 'step_error'
-    | 'cache_hit' | 'parallel_group' | 'memory_store' | 'token' | 'done' | 'error';
+  type: 'planning' | 'plan_ready' | 'validation' | 'output_validation' | 'step_start' | 'step_complete' | 'step_error'
+    | 'step_retry' | 'cache_hit' | 'parallel_group' | 'memory_store' | 'consistency_check'
+    | 'confidence_report' | 'token' | 'done' | 'error';
   agent?: AgentType | string;
   tool?: string;
   stepId?: string;
@@ -16,6 +17,7 @@ export interface StreamEvent {
   data?: Record<string, unknown>;
   parallelGroup?: number;
   cached?: boolean;
+  confidence?: number;
 }
 
 export interface StreamChatOptions {

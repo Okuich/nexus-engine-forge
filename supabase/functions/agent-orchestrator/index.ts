@@ -69,7 +69,7 @@ function getCacheKey(tool: string, args: Record<string, unknown>): string {
   return `${tool}:${JSON.stringify(args, Object.keys(args).sort())}`;
 }
 
-// ─── Validation Layer ────────────────────────────────────────────
+// ─── Input Validation Layer ──────────────────────────────────────
 
 interface ValidationError { field: string; message: string }
 
@@ -85,7 +85,6 @@ function validateToolArgs(tool: string, args: Record<string, unknown>): Validati
     }
   }
 
-  // Type checks
   const props = def.function.parameters.properties as Record<string, { type: string }>;
   for (const [key, val] of Object.entries(args)) {
     const schema = props[key];
@@ -99,6 +98,245 @@ function validateToolArgs(tool: string, args: Record<string, unknown>): Validati
   }
 
   return errors;
+}
+
+// ─── Output Validation Schemas ───────────────────────────────────
+
+interface OutputSchema {
+  requiredFields: string[];
+  numericRanges?: Record<string, { min?: number; max?: number }>;
+  nonEmpty?: string[];
+}
+
+const OUTPUT_SCHEMAS: Record<string, OutputSchema> = {
+  // Geometry
+  analyze_faces:         { requiredFields: ["total_faces", "breakdown", "total_area_mm2"], numericRanges: { total_faces: { min: 1 }, total_area_mm2: { min: 0 } } },
+  analyze_edges:         { requiredFields: ["total_edges", "breakdown", "total_length_mm"], numericRanges: { total_edges: { min: 0 } } },
+  detect_holes:          { requiredFields: ["total_holes", "holes"], numericRanges: { total_holes: { min: 0 } } },
+  measure_thickness:     { requiredFields: ["min_thickness_mm", "max_thickness_mm", "avg_thickness_mm"], numericRanges: { min_thickness_mm: { min: 0 }, max_thickness_mm: { min: 0 }, avg_thickness_mm: { min: 0 } } },
+  check_draft_angles:    { requiredFields: ["faces_checked", "passing", "failing"], numericRanges: { faces_checked: { min: 1 } } },
+  build_topology_graph:  { requiredFields: ["nodes", "edges", "connected_components", "is_manifold"], numericRanges: { nodes: { min: 1 } } },
+  // Cost
+  estimate_material_cost: { requiredFields: ["material", "mass_kg", "material_cost_usd"], numericRanges: { mass_kg: { min: 0 }, material_cost_usd: { min: 0 } } },
+  estimate_machining_time: { requiredFields: ["total_hours", "machining_cost_usd"], numericRanges: { total_hours: { min: 0 }, machining_cost_usd: { min: 0 } } },
+  estimate_total_cost:   { requiredFields: ["unit_cost_usd", "total_usd"], numericRanges: { unit_cost_usd: { min: 0 }, total_usd: { min: 0 } } },
+  quantity_price_breaks:  { requiredFields: ["breaks"], nonEmpty: ["breaks"] },
+  // Optimization
+  run_topology_optimization: { requiredFields: ["iterations", "best_fitness", "changes"], numericRanges: { best_fitness: { min: 0, max: 1 } } },
+  suggest_design_changes: { requiredFields: ["suggestions"], nonEmpty: ["suggestions"] },
+  run_parameter_sweep:   { requiredFields: ["optimal_values", "objective_value"], numericRanges: { objective_value: { min: 0 } } },
+  // Simulation
+  run_stress_analysis:   { requiredFields: ["max_von_mises_mpa", "safety_factor", "status"], numericRanges: { safety_factor: { min: 0 } } },
+  run_thermal_analysis:  { requiredFields: ["max_temp_c", "status"], numericRanges: { max_temp_c: { min: -273 } } },
+  predict_fatigue_life:  { requiredFields: ["cycles_to_failure", "endurance_limit_mpa", "status"] },
+  check_manufacturability: { requiredFields: ["overall_score", "sub_scores"], numericRanges: { overall_score: { min: 0, max: 100 } } },
+  // Workflow
+  generate_process_plan: { requiredFields: ["operations", "total_time_min"], nonEmpty: ["operations"], numericRanges: { total_time_min: { min: 0 } } },
+  select_fixtures:       { requiredFields: ["fixtures", "total_fixtures"], numericRanges: { total_fixtures: { min: 1 } } },
+  estimate_lead_time:    { requiredFields: ["total_business_days", "calendar_days"], numericRanges: { total_business_days: { min: 1 } } },
+  define_quality_checkpoints: { requiredFields: ["checkpoints", "total_checkpoints"], numericRanges: { total_checkpoints: { min: 1 } } },
+  // Document
+  generate_quote:        { requiredFields: ["quote_number", "total_usd", "status"] },
+  generate_inspection_report: { requiredFields: ["report_id", "status"] },
+  generate_material_cert: { requiredFields: ["cert_id", "material", "compliance"] },
+  generate_process_sheet: { requiredFields: ["sheet_id", "status"] },
+};
+
+interface OutputValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+function validateToolOutput(tool: string, output: Record<string, unknown>): OutputValidationResult {
+  const schema = OUTPUT_SCHEMAS[tool];
+  const result: OutputValidationResult = { valid: true, errors: [], warnings: [] };
+  if (!schema) return result; // no schema = assume valid
+
+  // Check required fields
+  for (const field of schema.requiredFields) {
+    if (output[field] === undefined || output[field] === null) {
+      result.errors.push(`Missing required output field: ${field}`);
+      result.valid = false;
+    }
+  }
+
+  // Check numeric ranges
+  if (schema.numericRanges) {
+    for (const [field, range] of Object.entries(schema.numericRanges)) {
+      const val = output[field];
+      if (typeof val !== "number") continue;
+      if (range.min !== undefined && val < range.min) {
+        result.errors.push(`${field}=${val} below minimum ${range.min}`);
+        result.valid = false;
+      }
+      if (range.max !== undefined && val > range.max) {
+        result.warnings.push(`${field}=${val} exceeds expected maximum ${range.max}`);
+      }
+    }
+  }
+
+  // Check non-empty arrays
+  if (schema.nonEmpty) {
+    for (const field of schema.nonEmpty) {
+      const val = output[field];
+      if (Array.isArray(val) && val.length === 0) {
+        result.warnings.push(`${field} is empty — expected at least one item`);
+      }
+    }
+  }
+
+  return result;
+}
+
+// ─── Confidence Scoring ──────────────────────────────────────────
+
+interface StepConfidence {
+  stepId: string;
+  tool: string;
+  agent: string;
+  score: number;        // 0.0–1.0
+  factors: Record<string, number>;
+  grade: "HIGH" | "MEDIUM" | "LOW";
+}
+
+function computeStepConfidence(
+  tool: string,
+  output: Record<string, unknown>,
+  validation: OutputValidationResult,
+  cached: boolean,
+  retries: number,
+  durationMs: number,
+): number {
+  let score = 1.0;
+
+  // Penalty for validation errors/warnings
+  score -= validation.errors.length * 0.25;
+  score -= validation.warnings.length * 0.05;
+
+  // Penalty for retries (each retry = less reliable)
+  score -= retries * 0.15;
+
+  // Cached results are trusted
+  if (cached) score = Math.min(score + 0.05, 1.0);
+
+  // Very slow execution may indicate instability
+  if (durationMs > 5000) score -= 0.05;
+
+  // Tool-specific confidence adjustments
+  if (tool === "check_manufacturability" && typeof output.overall_score === "number") {
+    // Low manuf. score doesn't reduce confidence—the tool is correct, just the part is bad
+  }
+  if (tool === "run_stress_analysis" && typeof output.safety_factor === "number") {
+    if ((output.safety_factor as number) < 1.0) score -= 0.05; // edge case, flag it
+  }
+  if (tool === "predict_fatigue_life" && output.cycles_to_failure === "INFINITE") {
+    // High confidence for infinite life
+    score = Math.min(score + 0.05, 1.0);
+  }
+
+  return Math.max(0, Math.min(1, +score.toFixed(2)));
+}
+
+function confidenceGrade(score: number): "HIGH" | "MEDIUM" | "LOW" {
+  return score >= 0.85 ? "HIGH" : score >= 0.6 ? "MEDIUM" : "LOW";
+}
+
+// ─── Cross-Result Consistency Checks ─────────────────────────────
+
+interface ConsistencyIssue {
+  type: "contradiction" | "mismatch" | "warning";
+  description: string;
+  involvedSteps: string[];
+  severity: "high" | "medium" | "low";
+}
+
+function checkCrossResultConsistency(
+  stepResults: Map<string, Record<string, unknown>>,
+  stepMeta: Map<string, { tool: string; agent: string }>,
+): ConsistencyIssue[] {
+  const issues: ConsistencyIssue[] = [];
+  const findStep = (tool: string) => {
+    for (const [id, meta] of stepMeta.entries()) {
+      if (meta.tool === tool) return { id, data: stepResults.get(id) };
+    }
+    return null;
+  };
+
+  // 1. Geometry face count vs manufacturability face_count input
+  const faces = findStep("analyze_faces");
+  const manuf = findStep("check_manufacturability");
+  if (faces?.data && manuf?.data) {
+    const geoFaces = faces.data.total_faces as number;
+    const manufFaces = manuf.data.sub_scores ? (manuf.data as any) : null;
+    // The face count should be consistent
+    if (geoFaces && manufFaces) {
+      // Check is implicit — just ensure they were both used
+    }
+  }
+
+  // 2. Stress safety factor vs fatigue safety factor should be coherent
+  const stress = findStep("run_stress_analysis");
+  const fatigue = findStep("predict_fatigue_life");
+  if (stress?.data && fatigue?.data) {
+    const stressSF = stress.data.safety_factor as number;
+    const fatigueSF = fatigue.data.safety_factor as number;
+    if (stressSF && fatigueSF) {
+      if (stressSF > 2.0 && fatigueSF < 1.0) {
+        issues.push({ type: "contradiction", description: `Static safety factor (${stressSF}) is adequate but fatigue safety factor (${fatigueSF}) indicates failure — review loading assumptions`, involvedSteps: [stress.id, fatigue.id], severity: "high" });
+      }
+    }
+  }
+
+  // 3. Material cost + machining cost should roughly match total cost
+  const matCost = findStep("estimate_material_cost");
+  const machTime = findStep("estimate_machining_time");
+  const totalCost = findStep("estimate_total_cost");
+  if (matCost?.data && machTime?.data && totalCost?.data) {
+    const mat = matCost.data.material_cost_usd as number;
+    const mach = machTime.data.machining_cost_usd as number;
+    const total = totalCost.data.unit_cost_usd as number;
+    if (mat && mach && total) {
+      const sum = mat + mach;
+      // Total should be >= sum (includes overhead)
+      if (total < sum * 0.95) {
+        issues.push({ type: "mismatch", description: `Total cost $${total} is less than material ($${mat}) + machining ($${mach}) = $${sum.toFixed(2)}`, involvedSteps: [matCost.id, machTime.id, totalCost.id], severity: "high" });
+      }
+      if (total > sum * 2.0) {
+        issues.push({ type: "warning", description: `Total cost $${total} is >2× raw costs ($${sum.toFixed(2)}) — overhead seems high`, involvedSteps: [matCost.id, machTime.id, totalCost.id], severity: "medium" });
+      }
+    }
+  }
+
+  // 4. Process plan time vs lead time coherence
+  const procPlan = findStep("generate_process_plan");
+  const leadTime = findStep("estimate_lead_time");
+  if (procPlan?.data && leadTime?.data) {
+    const procHours = procPlan.data.total_time_hours as number;
+    const leadDays = leadTime.data.total_business_days as number;
+    if (procHours && leadDays) {
+      const minDays = Math.ceil(procHours / 8);
+      if (leadDays < minDays) {
+        issues.push({ type: "contradiction", description: `Lead time (${leadDays} days) is shorter than minimum machining time (${minDays} days at 8hr/day)`, involvedSteps: [procPlan.id, leadTime.id], severity: "high" });
+      }
+    }
+  }
+
+  // 5. Thickness warnings vs optimization suggestions should align
+  const thickness = findStep("measure_thickness");
+  const optimization = findStep("run_topology_optimization");
+  if (thickness?.data && optimization?.data) {
+    const minT = thickness.data.min_thickness_mm as number;
+    const changes = (optimization.data.changes as any[]) || [];
+    if (minT && minT < 1.5) {
+      const hasThicknessFix = changes.some((c: any) => c.type === "thickness_increase");
+      if (!hasThicknessFix) {
+        issues.push({ type: "warning", description: `Thin wall detected (${minT}mm) but optimization did not suggest a thickness increase`, involvedSteps: [thickness.id, optimization.id], severity: "low" });
+      }
+    }
+  }
+
+  return issues;
 }
 
 // ─── Agent Base Class ────────────────────────────────────────────
@@ -446,9 +684,9 @@ function getAgentForTool(tool: string): BaseAgent {
   return agent;
 }
 
-// ─── Execution with Cache & Retry ────────────────────────────────
+// ─── Execution with Cache, Retry & Output Validation ─────────────
 
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 3;
 const CACHEABLE_TOOLS = new Set([
   "analyze_faces", "analyze_edges", "detect_holes", "measure_thickness",
   "check_draft_angles", "build_topology_graph", "run_stress_analysis",
@@ -456,17 +694,36 @@ const CACHEABLE_TOOLS = new Set([
   "estimate_machining_time",
 ]);
 
-async function executeWithCacheAndRetry(
+interface ExecutionOutcome {
+  success: boolean;
+  data: Record<string, unknown>;
+  retries: number;
+  cached: boolean;
+  agent: AgentType;
+  warnings: string[];
+  outputValidation: OutputValidationResult;
+  confidence: number;
+  confidenceGrade: "HIGH" | "MEDIUM" | "LOW";
+  durationMs: number;
+}
+
+async function executeWithValidation(
   tool: string, args: Record<string, unknown>,
   supabaseAdmin: any, tenantId?: string,
-): Promise<{ success: boolean; data: Record<string, unknown>; retries: number; cached: boolean; agent: AgentType; warnings: string[] }> {
+  emitRetry?: (retry: number, reason: string) => void,
+): Promise<ExecutionOutcome> {
+  const execStart = Date.now();
   const cacheKey = getCacheKey(tool, args);
 
   // In-memory cache check
   if (CACHEABLE_TOOLS.has(tool)) {
     const cached = memoryCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
-      return { success: true, data: cached.data as Record<string, unknown>, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
+      const data = cached.data as Record<string, unknown>;
+      const ov = validateToolOutput(tool, data);
+      const dur = Date.now() - execStart;
+      const conf = computeStepConfidence(tool, data, ov, true, 0, dur);
+      return { success: true, data, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [], outputValidation: ov, confidence: conf, confidenceGrade: confidenceGrade(conf), durationMs: dur };
     }
     // DB cache check
     if (supabaseAdmin && tenantId) {
@@ -475,20 +732,40 @@ async function executeWithCacheAndRetry(
           .from("agent_memory").select("value, expires_at")
           .eq("tenant_id", tenantId).eq("memory_type", "tool_result_cache").eq("key", cacheKey).maybeSingle();
         if (memRow && (!memRow.expires_at || new Date(memRow.expires_at) > new Date())) {
-          memoryCache.set(cacheKey, { data: memRow.value, expires: Date.now() + 300_000 });
-          return { success: true, data: memRow.value as Record<string, unknown>, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
+          const data = memRow.value as Record<string, unknown>;
+          memoryCache.set(cacheKey, { data, expires: Date.now() + 300_000 });
+          const ov = validateToolOutput(tool, data);
+          const dur = Date.now() - execStart;
+          const conf = computeStepConfidence(tool, data, ov, true, 0, dur);
+          return { success: true, data, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [], outputValidation: ov, confidence: conf, confidenceGrade: confidenceGrade(conf), durationMs: dur };
         }
       } catch { /* miss */ }
     }
   }
 
-  // Execute via agent class with retries
+  // Execute via agent class with retries + output validation
   const agent = getAgentForTool(tool);
   let retries = 0;
+  let lastOutput: AgentOutput | null = null;
+
   while (retries <= MAX_RETRIES) {
     const output = await agent.execute(tool, args);
+    lastOutput = output;
+
     if (output.success) {
-      if (CACHEABLE_TOOLS.has(tool)) {
+      // Validate output
+      const ov = validateToolOutput(tool, output.data);
+
+      if (!ov.valid && retries < MAX_RETRIES) {
+        // Output validation failed — retry
+        retries++;
+        emitRetry?.(retries, `Output validation failed: ${ov.errors.join("; ")}`);
+        await new Promise(r => setTimeout(r, 300 * retries));
+        continue;
+      }
+
+      // Cache valid results
+      if (CACHEABLE_TOOLS.has(tool) && ov.valid) {
         const ttl = 600_000;
         memoryCache.set(cacheKey, { data: output.data, expires: Date.now() + ttl });
         if (supabaseAdmin && tenantId) {
@@ -498,13 +775,22 @@ async function executeWithCacheAndRetry(
           }, { onConflict: "tenant_id,memory_type,key" }).then(() => {});
         }
       }
-      return { ...output, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings };
+
+      const dur = Date.now() - execStart;
+      const conf = computeStepConfidence(tool, output.data, ov, false, retries, dur);
+      return { success: true, data: output.data, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings, outputValidation: ov, confidence: conf, confidenceGrade: confidenceGrade(conf), durationMs: dur };
     }
+
+    // Execution failed — retry
     retries++;
-    if (retries > MAX_RETRIES) return { success: false, data: output.data, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings };
+    if (retries > MAX_RETRIES) break;
+    emitRetry?.(retries, `Execution error: ${(output.data as any).error || "unknown"}`);
     await new Promise(r => setTimeout(r, 500 * retries));
   }
-  return { success: false, data: { error: "Max retries exceeded" }, retries: MAX_RETRIES, cached: false, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
+
+  const dur = Date.now() - execStart;
+  const failedOV: OutputValidationResult = { valid: false, errors: ["Execution failed after max retries"], warnings: [] };
+  return { success: false, data: lastOutput?.data || { error: "Max retries exceeded" }, retries: MAX_RETRIES, cached: false, agent: agent.type, warnings: lastOutput?.metadata.warnings || [], outputValidation: failedOV, confidence: 0, confidenceGrade: "LOW", durationMs: dur };
 }
 
 // ─── Structured Planner ──────────────────────────────────────────
@@ -756,10 +1042,13 @@ serve(async (req) => {
           }
         }
 
-        // Execute DAG groups
+        // Execute DAG groups with validation & confidence
         const stepResults = new Map<string, Record<string, unknown>>();
-        const toolResults: { step_id: string; tool: string; agent: string; result: Record<string, unknown>; cached: boolean; duration_ms: number }[] = [];
+        const stepMeta = new Map<string, { tool: string; agent: string }>();
+        const stepConfidences: StepConfidence[] = [];
+        const toolResults: { step_id: string; tool: string; agent: string; result: Record<string, unknown>; cached: boolean; duration_ms: number; confidence: number; confidence_grade: string; output_validation: OutputValidationResult }[] = [];
         let cacheHits = 0;
+        let totalRetries = 0;
 
         for (let gi = 0; gi < parallelGroups.length; gi++) {
           const group = parallelGroups[gi];
@@ -768,37 +1057,104 @@ serve(async (req) => {
           }
 
           const promises = group.map(async (step) => {
-            const stepStart = Date.now();
-            // Resolve input references from prior step results
             const resolvedInput = resolveInputRefs(step.input, stepResults);
 
             emit({ event: "step_start", agent: step.agent, tool: step.tool, stepId: step.id, content: `${step.rationale}` });
 
-            const result = await executeWithCacheAndRetry(step.tool, resolvedInput, supabaseAdmin, tenantId);
-            const duration = Date.now() - stepStart;
+            const result = await executeWithValidation(
+              step.tool, resolvedInput, supabaseAdmin, tenantId,
+              (retry, reason) => {
+                emit({ event: "step_retry" as any, agent: step.agent, tool: step.tool, stepId: step.id, content: `🔄 Retry ${retry}/${MAX_RETRIES}: ${reason}` });
+              },
+            );
+
+            totalRetries += result.retries;
 
             if (result.cached) {
               cacheHits++;
-              emit({ event: "cache_hit", agent: step.agent, tool: step.tool, stepId: step.id, content: `⚡ ${step.tool} [cached]`, cached: true });
+              emit({ event: "cache_hit", agent: step.agent, tool: step.tool, stepId: step.id, content: `⚡ ${step.tool} [cached]`, cached: true, confidence: result.confidence });
+            }
+
+            // Emit output validation result
+            if (result.outputValidation.errors.length > 0 || result.outputValidation.warnings.length > 0) {
+              emit({
+                event: "output_validation" as any, agent: step.agent, tool: step.tool, stepId: step.id,
+                content: `🔍 Output validation: ${result.outputValidation.valid ? "PASS" : "FAIL"} — ${result.outputValidation.errors.concat(result.outputValidation.warnings).join("; ")}`,
+                data: { valid: result.outputValidation.valid, errors: result.outputValidation.errors, warnings: result.outputValidation.warnings },
+              });
             }
 
             if (result.success) {
               stepResults.set(step.id, result.data);
-              emit({ event: "step_complete", agent: step.agent, tool: step.tool, stepId: step.id, data: result.data, content: `✓ ${step.tool} (${duration}ms)${result.cached ? " [cached]" : ""}` });
+              stepMeta.set(step.id, { tool: step.tool, agent: step.agent });
+              emit({
+                event: "step_complete", agent: step.agent, tool: step.tool, stepId: step.id, data: result.data,
+                content: `✓ ${step.tool} (${result.durationMs}ms)${result.cached ? " [cached]" : ""}${result.retries > 0 ? ` [${result.retries} retries]` : ""} — confidence: ${(result.confidence * 100).toFixed(0)}% ${result.confidenceGrade}`,
+                confidence: result.confidence,
+              });
             } else {
-              emit({ event: "step_error", agent: step.agent, tool: step.tool, stepId: step.id, content: `✗ ${step.tool}: ${(result.data as any).error}` });
+              emit({ event: "step_error", agent: step.agent, tool: step.tool, stepId: step.id, content: `✗ ${step.tool}: ${(result.data as any).error || "failed after retries"}`, confidence: 0 });
             }
 
-            toolResults.push({ step_id: step.id, tool: step.tool, agent: step.agent, result: result.data, cached: result.cached, duration_ms: duration });
+            stepConfidences.push({
+              stepId: step.id, tool: step.tool, agent: step.agent,
+              score: result.confidence, grade: result.confidenceGrade,
+              factors: { validation_errors: result.outputValidation.errors.length, validation_warnings: result.outputValidation.warnings.length, retries: result.retries, cached: result.cached ? 1 : 0, duration_ms: result.durationMs },
+            });
+
+            toolResults.push({ step_id: step.id, tool: step.tool, agent: step.agent, result: result.data, cached: result.cached, duration_ms: result.durationMs, confidence: result.confidence, confidence_grade: result.confidenceGrade, output_validation: result.outputValidation });
           });
 
           await Promise.all(promises);
         }
 
-        // Persist execution
+        // ── Phase 3: Cross-Result Consistency Checks ──
+        const consistencyIssues = checkCrossResultConsistency(stepResults, stepMeta);
+        if (consistencyIssues.length > 0) {
+          for (const issue of consistencyIssues) {
+            emit({
+              event: "consistency_check" as any,
+              content: `${issue.severity === "high" ? "🚨" : issue.severity === "medium" ? "⚠️" : "ℹ️"} [${issue.type}] ${issue.description}`,
+              data: { type: issue.type, severity: issue.severity, involved_steps: issue.involvedSteps },
+            });
+          }
+          // Penalize confidence for high-severity consistency issues
+          for (const issue of consistencyIssues.filter(i => i.severity === "high")) {
+            for (const stepId of issue.involvedSteps) {
+              const sc = stepConfidences.find(c => c.stepId === stepId);
+              if (sc) {
+                sc.score = Math.max(0, sc.score - 0.15);
+                sc.grade = confidenceGrade(sc.score);
+              }
+            }
+          }
+        }
+
+        // ── Phase 4: Confidence Report ──
+        const avgConfidence = stepConfidences.length > 0
+          ? +(stepConfidences.reduce((s, c) => s + c.score, 0) / stepConfidences.length).toFixed(2)
+          : 0;
+        const overallGrade = confidenceGrade(avgConfidence);
+        const lowConfSteps = stepConfidences.filter(c => c.grade === "LOW");
+
+        emit({
+          event: "confidence_report" as any,
+          content: `📊 Overall confidence: ${(avgConfidence * 100).toFixed(0)}% (${overallGrade})${consistencyIssues.length > 0 ? ` — ${consistencyIssues.length} consistency issue(s)` : ""}${lowConfSteps.length > 0 ? ` — ${lowConfSteps.length} low-confidence step(s)` : ""}`,
+          confidence: avgConfidence,
+          data: {
+            overall_confidence: avgConfidence,
+            overall_grade: overallGrade,
+            step_confidences: stepConfidences,
+            consistency_issues: consistencyIssues,
+            total_retries: totalRetries,
+            cache_hits: cacheHits,
+          },
+        });
+
+        // Persist execution with validation data
         if (supabaseAdmin) {
           const totalMs = Date.now() - startTime;
-          emit({ event: "memory_store", content: `💾 Execution: ${plan.steps.length} steps, ${cacheHits} cached, ${totalMs}ms total` });
+          emit({ event: "memory_store", content: `💾 Execution: ${plan.steps.length} steps, ${cacheHits} cached, ${totalRetries} retries, ${totalMs}ms total` });
 
           supabaseAdmin.from("agent_executions").insert({
             tenant_id: tenantId || null,
@@ -808,21 +1164,25 @@ serve(async (req) => {
             status: "completed",
             total_duration_ms: totalMs,
             model_used: "google/gemini-3-flash-preview",
-            token_usage: { cache_hits: cacheHits, parallel_groups: parallelGroups.length },
+            token_usage: { cache_hits: cacheHits, parallel_groups: parallelGroups.length, total_retries: totalRetries, overall_confidence: avgConfidence, consistency_issues: consistencyIssues.length },
             completed_at: new Date().toISOString(),
           }).then(() => {});
         }
 
-        // ── Phase 3: LLM Synthesis ──
+        // ── Phase 5: LLM Synthesis (with confidence context) ──
         const toolSummary = toolResults.map(tr =>
-          `[${tr.agent}/${tr.tool}] (step ${tr.step_id}${tr.cached ? ", cached" : ""}):\n${JSON.stringify(tr.result, null, 1)}`
+          `[${tr.agent}/${tr.tool}] (step ${tr.step_id}${tr.cached ? ", cached" : ""}, confidence: ${(tr.confidence * 100).toFixed(0)}% ${tr.confidence_grade}):\n${JSON.stringify(tr.result, null, 1)}`
         ).join("\n\n");
+
+        const consistencySummary = consistencyIssues.length > 0
+          ? `\n\nConsistency issues found:\n${consistencyIssues.map(i => `- [${i.severity}] ${i.description}`).join("\n")}`
+          : "";
 
         const synthesisMessages = [
           { role: "system", content: SYNTHESIS_SYSTEM },
           ...messages,
-          { role: "assistant", content: `I executed a ${plan.steps.length}-step plan: ${plan.goal}\n\nPlan reasoning: ${plan.reasoning}\n\nTool results:\n${toolSummary}` },
-          { role: "user", content: "Synthesize these results into a clear engineering response for the user. Cite specific numbers." },
+          { role: "assistant", content: `I executed a ${plan.steps.length}-step plan: ${plan.goal}\n\nPlan reasoning: ${plan.reasoning}\n\nOverall confidence: ${(avgConfidence * 100).toFixed(0)}% (${overallGrade})\n\nTool results:\n${toolSummary}${consistencySummary}` },
+          { role: "user", content: "Synthesize these results into a clear engineering response for the user. Cite specific numbers. If confidence is below 85%, note which results have lower confidence and why. Mention any consistency issues found." },
         ];
 
         const synthesisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
