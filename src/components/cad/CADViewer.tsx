@@ -147,6 +147,7 @@ export function CADViewer() {
         <pointLight position={[3, -1, 2]} intensity={0.2} color="#10b981" />
 
         <IndustrialModel />
+        <SceneCapture sceneRef={sceneRef} />
 
         <Grid
           position={[0, -1.5, 0]}
