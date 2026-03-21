@@ -16,6 +16,7 @@ import MLEvaluation from "./pages/MLEvaluation.tsx";
 import Prospects from "./pages/Prospects.tsx";
 import CRM from "./pages/CRM.tsx";
 import Marketplace from "./pages/Marketplace.tsx";
+import Admin from "./pages/Admin.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="/prospects" element={<ProtectedRoute><Prospects /></ProtectedRoute>} />
         <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
         <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>

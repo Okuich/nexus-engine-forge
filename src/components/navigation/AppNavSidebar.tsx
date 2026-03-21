@@ -14,11 +14,13 @@ import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import type { Permission } from '@/lib/auth/rbac';
+import type { AppRole } from '@/lib/auth/rbac';
 import {
   Box,
   Brain,
   FlaskConical,
   Workflow,
+  ShieldCheck,
   Store,
   Users,
   UserCircle,
@@ -56,6 +58,7 @@ const businessItems: NavItem[] = [
   { title: 'Marketplace', url: '/marketplace', icon: Store, permissions: ['rfq:view'] },
   { title: 'Prospects', url: '/prospects', icon: Users, permissions: ['crm:view'] },
   { title: 'CRM', url: '/crm', icon: UserCircle, permissions: ['crm:view'] },
+  { title: 'Admin', url: '/admin', icon: ShieldCheck, permissions: ['admin:settings'] },
 ];
 
 interface NavGroupProps {
