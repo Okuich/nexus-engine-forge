@@ -7,7 +7,8 @@
  * function delegates to a compute service.
  */
 
-import type { GeometryFeatureSet, FaceFeatures, Vec3 } from '@/lib/geometry/types';
+import type { GeometryFeatureSet, FaceFeatures } from '@/lib/geometry/featureExtractor';
+import type { Vec3 } from '@/lib/geometry/types';
 import type {
   SimulationConfig,
   SimulationResult,
