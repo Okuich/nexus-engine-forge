@@ -1,38 +1,103 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, X, Sparkles, Wrench, AlertCircle } from 'lucide-react';
+import { Bot, Send, X, Sparkles, Loader2 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
+import { streamAgentChat, type StreamEvent } from '@/lib/agents/client';
+import { AGENT_INFO, type AgentType } from '@/lib/agents/types';
 
 const suggestions = [
-  'Analyze wall thickness',
-  'Check draft angles',
-  'Suggest toolpath',
-  'Material comparison',
+  'Full geometry analysis',
+  'Check manufacturability',
+  'Estimate production cost',
+  'Run stress analysis',
 ];
+
+function AgentActivityBadge({ event }: { event: StreamEvent }) {
+  const agentType = event.agent as AgentType | undefined;
+  const info = agentType ? AGENT_INFO[agentType] : null;
+
+  const bgClass =
+    event.type === 'step_complete' ? 'bg-accent/10 border-accent/30' :
+    event.type === 'step_error' ? 'bg-destructive/10 border-destructive/30' :
+    'bg-primary/10 border-primary/30';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      className={`rounded-lg border px-3 py-1.5 text-[11px] font-mono ${bgClass}`}
+    >
+      <span>{info?.icon || '⚙️'} </span>
+      <span className="text-muted-foreground">{event.content}</span>
+    </motion.div>
+  );
+}
 
 export function CopilotPanel() {
   const { copilotOpen, toggleCopilot, chatMessages, addMessage } = useAppStore();
   const [input, setInput] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [agentEvents, setAgentEvents] = useState<StreamEvent[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [chatMessages]);
+  }, [chatMessages, agentEvents]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    addMessage({ role: 'user', content: input.trim() });
-    const userInput = input.trim();
+  const handleSend = useCallback(async (text?: string) => {
+    const message = text || input.trim();
+    if (!message || isStreaming) return;
     setInput('');
+    setAgentEvents([]);
 
-    // Simulated AI response
-    setTimeout(() => {
+    addMessage({ role: 'user', content: message });
+    setIsStreaming(true);
+
+    const allMessages = [
+      ...useAppStore.getState().chatMessages.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message },
+    ];
+
+    let assistantText = '';
+
+    const updateAssistant = (chunk: string) => {
+      assistantText += chunk;
+      const store = useAppStore.getState();
+      const msgs = store.chatMessages;
+      const last = msgs[msgs.length - 1];
+      if (last?.role === 'assistant') {
+        // Update in place via store
+        useAppStore.setState({
+          chatMessages: msgs.map((m, i) =>
+            i === msgs.length - 1 ? { ...m, content: assistantText } : m
+          ),
+        });
+      } else {
+        addMessage({ role: 'assistant', content: assistantText });
+      }
+    };
+
+    try {
+      await streamAgentChat({
+        messages: allMessages,
+        onEvent: (event) => {
+          setAgentEvents((prev) => [...prev, event]);
+          if (event.type === 'error') {
+            addMessage({ role: 'assistant', content: `❌ ${event.content}` });
+          }
+        },
+        onDelta: (text) => updateAssistant(text),
+        onDone: () => setIsStreaming(false),
+      });
+    } catch (e) {
+      console.error('Agent stream error:', e);
       addMessage({
         role: 'assistant',
-        content: getSimulatedResponse(userInput),
+        content: '❌ Connection error. Please try again.',
       });
-    }, 800);
-  };
+      setIsStreaming(false);
+    }
+  }, [input, isStreaming, addMessage]);
 
   if (!copilotOpen) {
     return (
@@ -64,8 +129,10 @@ export function CopilotPanel() {
           <div>
             <span className="panel-title">AI Copilot</span>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="status-dot-online" />
-              <span className="text-[10px] text-muted-foreground font-mono">Online</span>
+              <div className={isStreaming ? 'status-dot-warning' : 'status-dot-online'} />
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {isStreaming ? 'Processing...' : 'Online'}
+              </span>
             </div>
           </div>
         </div>
@@ -88,7 +155,7 @@ export function CopilotPanel() {
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
                     ? 'bg-primary text-primary-foreground rounded-br-sm'
                     : 'bg-secondary text-secondary-foreground rounded-bl-sm'
@@ -99,23 +166,41 @@ export function CopilotPanel() {
             </motion.div>
           ))}
         </AnimatePresence>
+
+        {/* Agent activity feed */}
+        {agentEvents.length > 0 && (
+          <div className="space-y-1.5">
+            {agentEvents
+              .filter((e) => e.type !== 'error')
+              .map((event, i) => (
+                <AgentActivityBadge key={i} event={event} />
+              ))}
+          </div>
+        )}
+
+        {/* Streaming indicator */}
+        {isStreaming && (
+          <div className="flex items-center gap-2 px-3 py-1">
+            <Loader2 className="w-3 h-3 text-primary animate-spin" />
+            <span className="text-xs text-muted-foreground">Agents working...</span>
+          </div>
+        )}
       </div>
 
       {/* Suggestions */}
-      <div className="px-3 pb-2 flex flex-wrap gap-1.5">
-        {suggestions.map((s) => (
-          <button
-            key={s}
-            onClick={() => {
-              addMessage({ role: 'user', content: s });
-              setTimeout(() => addMessage({ role: 'assistant', content: getSimulatedResponse(s) }), 800);
-            }}
-            className="text-[11px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      {!isStreaming && (
+        <div className="px-3 pb-2 flex flex-wrap gap-1.5">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => handleSend(s)}
+              className="text-[11px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       <div className="p-3 border-t border-border">
@@ -123,32 +208,24 @@ export function CopilotPanel() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask about your model..."
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            placeholder={isStreaming ? 'Agents are working...' : 'Ask about your model...'}
+            disabled={isStreaming}
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none disabled:opacity-50"
           />
           <button
-            onClick={handleSend}
-            disabled={!input.trim()}
+            onClick={() => handleSend()}
+            disabled={!input.trim() || isStreaming}
             className="p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors disabled:opacity-30"
           >
-            <Send className="w-4 h-4" />
+            {isStreaming ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
           </button>
         </div>
       </div>
     </motion.div>
   );
-}
-
-function getSimulatedResponse(input: string): string {
-  const lower = input.toLowerCase();
-  if (lower.includes('thickness') || lower.includes('wall'))
-    return '⚠️ Wall thickness analysis: Min 1.2mm detected at Section C-7. Recommended minimum for Ti-6Al-4V is 1.5mm. Consider reinforcing ribs at the inlet junction.';
-  if (lower.includes('draft'))
-    return '✅ Draft angle check passed. All external faces exceed 3° draft. Internal bore shows 1.5° — adequate for investment casting.';
-  if (lower.includes('toolpath'))
-    return '🔧 Recommended: Adaptive clearing with 0.5mm stepdown, followed by parallel finishing at 0.15mm. Est. cycle time: 4h 23min on 5-axis.';
-  if (lower.includes('material'))
-    return '📊 Ti-6Al-4V vs Inconel 718:\n• Density: 4.43 vs 8.19 g/cm³\n• Yield: 880 vs 1035 MPa\n• Machinability: Ti wins\n• Temp resistance: Inconel wins above 650°C';
-  return `Analyzing "${input}"... Based on the current geometry, I'd recommend reviewing the stress concentration points near the flange-body interface. Want me to run a detailed FEA preview?`;
 }
