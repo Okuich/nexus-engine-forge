@@ -204,7 +204,7 @@ export class MarketplaceService {
         pricing_multiplier: profile.pricingMultiplier ?? 1.0,
         certifications: profile.certifications ?? [],
         active: profile.active ?? true,
-      } as any, { onConflict: 'user_id' })
+      } satisfies TablesInsert<'supplier_profiles'>, { onConflict: 'user_id' })
       .select()
       .single();
 
