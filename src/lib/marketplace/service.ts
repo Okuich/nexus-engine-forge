@@ -38,7 +38,7 @@ function mapRFQ(row: Record<string, unknown>): RFQ {
     maxLeadTimeDays: row.max_lead_time_days as number | null,
     region: row.region as string | null,
     targetCostUsd: row.target_cost_usd != null ? Number(row.target_cost_usd) : null,
-    geometryStats: (row.geometry_stats as Record<string, unknown>) ?? {},
+    geometryStats: (row.geometry_stats as any) ?? {},
     status: row.status as RFQ['status'],
     createdBy: row.created_by as string,
     tenantId: row.tenant_id as string | null,
@@ -118,12 +118,12 @@ export class MarketplaceService {
         deadline: req.deadline ?? null,
         created_by: user.id,
         status: 'open',
-      } as Record<string, unknown>)
+      } as any)
       .select()
       .single();
 
     if (error) throw new Error(`Failed to create RFQ: ${error.message}`);
-    return mapRFQ(data as Record<string, unknown>);
+    return mapRFQ(data as any);
   }
 
   async listRFQs(filters?: { status?: string; material?: string }): Promise<RFQ[]> {
@@ -148,13 +148,13 @@ export class MarketplaceService {
       .single();
 
     if (error) throw new Error(`Failed to get RFQ: ${error.message}`);
-    return mapRFQ(data as Record<string, unknown>);
+    return mapRFQ(data as any);
   }
 
   async updateRFQStatus(id: string, status: RFQ['status']): Promise<void> {
     const { error } = await supabase
       .from('rfqs')
-      .update({ status, updated_at: new Date().toISOString() } as Record<string, unknown>)
+      .update({ status, updated_at: new Date().toISOString() } as any)
       .eq('id', id);
 
     if (error) throw new Error(`Failed to update RFQ status: ${error.message}`);
@@ -180,7 +180,7 @@ export class MarketplaceService {
       .single();
 
     if (error) throw new Error(`Failed to get supplier: ${error.message}`);
-    return mapSupplierProfile(data as Record<string, unknown>);
+    return mapSupplierProfile(data as any);
   }
 
   async upsertSupplierProfile(profile: Partial<SupplierProfile> & { companyName: string }): Promise<SupplierProfile> {
@@ -203,12 +203,12 @@ export class MarketplaceService {
         pricing_multiplier: profile.pricingMultiplier ?? 1.0,
         certifications: profile.certifications ?? [],
         active: profile.active ?? true,
-      } as Record<string, unknown>, { onConflict: 'user_id' })
+      } as any, { onConflict: 'user_id' })
       .select()
       .single();
 
     if (error) throw new Error(`Failed to upsert supplier profile: ${error.message}`);
-    return mapSupplierProfile(data as Record<string, unknown>);
+    return mapSupplierProfile(data as any);
   }
 
   // ── Matching ──
@@ -255,12 +255,12 @@ export class MarketplaceService {
         adjustments: req.adjustments ?? [],
         confidence: req.confidence ?? 0.8,
         status: 'submitted',
-      } as Record<string, unknown>)
+      } as any)
       .select()
       .single();
 
     if (error) throw new Error(`Failed to submit quote: ${error.message}`);
-    return mapRFQQuote(data as Record<string, unknown>);
+    return mapRFQQuote(data as any);
   }
 
   async submitQuoteAsSupplier(supplierId: string, req: SubmitQuoteRequest): Promise<RFQQuote> {
@@ -283,12 +283,12 @@ export class MarketplaceService {
         adjustments: req.adjustments ?? [],
         confidence: req.confidence ?? 0.8,
         status: 'submitted',
-      } as Record<string, unknown>)
+      } as any)
       .select()
       .single();
 
     if (error) throw new Error(`Failed to submit quote: ${error.message}`);
-    return mapRFQQuote(data as Record<string, unknown>);
+    return mapRFQQuote(data as any);
   }
 
   // ── Quote Retrieval ──
@@ -334,7 +334,7 @@ export class MarketplaceService {
           score: quote.score,
           score_breakdown: quote.scoreBreakdown,
           updated_at: new Date().toISOString(),
-        } as Record<string, unknown>)
+        } as any)
         .eq('id', quote.id);
     }
 
@@ -350,13 +350,13 @@ export class MarketplaceService {
     // Accept the winning quote
     await supabase
       .from('rfq_quotes')
-      .update({ status: 'accepted', updated_at: new Date().toISOString() } as Record<string, unknown>)
+      .update({ status: 'accepted', updated_at: new Date().toISOString() } as any)
       .eq('id', quoteId);
 
     // Reject all other quotes
     await supabase
       .from('rfq_quotes')
-      .update({ status: 'rejected', updated_at: new Date().toISOString() } as Record<string, unknown>)
+      .update({ status: 'rejected', updated_at: new Date().toISOString() } as any)
       .eq('rfq_id', rfqId)
       .neq('id', quoteId);
 
