@@ -219,7 +219,7 @@ function solveAirflow(
   const mu = config.viscosity;
 
   // Reynolds number based on bounding box diagonal
-  const charLength = stats.boundingBox.diagonal;
+  const charLength = bbDiagonal(stats.boundingBox);
   const Re = (rho * V * charLength) / mu;
 
   const pressureValues: number[] = [];
