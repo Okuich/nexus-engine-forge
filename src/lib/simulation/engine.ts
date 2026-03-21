@@ -72,7 +72,7 @@ function solveStructural(
   const safetyFactorValues: number[] = [];
 
   const fixedSet = new Set(config.fixedFaces);
-  const bbDiag = stats.boundingBox.diagonal || 1;
+  const bbDiag = bbDiagonal(stats.boundingBox) || 1;
 
   // Iterative pseudo-convergence
   const convergenceHistory: number[] = [];
