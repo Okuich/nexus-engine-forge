@@ -20,6 +20,7 @@ import {
   Brain,
   FlaskConical,
   Workflow,
+  ShieldCheck,
   Store,
   Users,
   UserCircle,
