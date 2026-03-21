@@ -18,6 +18,9 @@ import type { AppRole } from '@/lib/auth/rbac';
 import {
   Box,
   Brain,
+  Building2,
+  Check,
+  ChevronsUpDown,
   FlaskConical,
   Workflow,
   ShieldCheck,
@@ -32,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -108,14 +112,61 @@ function NavGroup({ label, items, collapsed }: NavGroupProps) {
 export function AppNavSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
-  const { user, activeRole, signOut, tenants, activeTenantId } = useAuth();
+  const { user, activeRole, signOut, tenants, activeTenantId, setActiveTenant } = useAuth();
 
   const activeTenant = tenants.find((t) => t.tenant_id === activeTenantId);
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? '??';
+  const hasMultipleTenants = tenants.length > 1;
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       <SidebarContent className="bg-card">
+        {/* Tenant switcher at top when multiple tenants */}
+        {hasMultipleTenants && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-muted-foreground">Workspace</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md hover:bg-secondary/50 transition-colors text-left text-sm">
+                    <Building2 className="h-4 w-4 shrink-0 text-primary" />
+                    {!collapsed && (
+                      <>
+                        <span className="flex-1 truncate text-foreground font-medium">
+                          {activeTenant?.tenant_name || 'Select workspace'}
+                        </span>
+                        <ChevronsUpDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      </>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="bottom" className="w-56">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                    Switch workspace
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {tenants.map((t) => (
+                    <DropdownMenuItem
+                      key={t.tenant_id}
+                      onClick={() => setActiveTenant(t.tenant_id)}
+                      className="flex items-center gap-2"
+                    >
+                      <Building2 className="h-3.5 w-3.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate">{t.tenant_name}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">{t.role}</p>
+                      </div>
+                      {t.tenant_id === activeTenantId && (
+                        <Check className="h-3.5 w-3.5 text-primary shrink-0" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         <NavGroup label="Engineering" items={engineeringItems} collapsed={collapsed} />
         <NavGroup label="ML & AI" items={mlItems} collapsed={collapsed} />
         <NavGroup label="Business" items={businessItems} collapsed={collapsed} />
