@@ -12,6 +12,7 @@ import MLDashboard from "./pages/MLDashboard.tsx";
 import MLPipeline from "./pages/MLPipeline.tsx";
 import Prospects from "./pages/Prospects.tsx";
 import CRM from "./pages/CRM.tsx";
+import Marketplace from "./pages/Marketplace.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/pipeline" element={<ProtectedRoute><MLPipeline /></ProtectedRoute>} />
             <Route path="/prospects" element={<ProtectedRoute><Prospects /></ProtectedRoute>} />
             <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
+            <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
