@@ -516,27 +516,18 @@ export function AnalysisPanel() {
   } = useAppStore();
   const [quoteOpen, setQuoteOpen] = useState(false);
 
-  if (demoPhase === 'idle' || demoPhase === 'uploading') return null;
+  if (demoPhase === 'idle' || demoPhase === 'uploading') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+        <Shield className="w-8 h-8 text-muted-foreground/30 mb-3" />
+        <p className="text-sm text-muted-foreground">Upload a CAD file to see analysis results</p>
+      </div>
+    );
+  }
 
   return (
     <>
-      <motion.div
-        initial={{ width: 0, opacity: 0 }}
-        animate={{ width: 380, opacity: 1 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="h-full bg-card border-l border-border flex flex-col shrink-0 overflow-hidden"
-      >
-        {/* Header */}
-        <div className="panel-header">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-primary" />
-            <span className="panel-title">Analysis Results</span>
-          </div>
-          {uploadedFile && (
-            <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[160px]">{uploadedFile.name}</span>
-          )}
-        </div>
-
+      <div className="h-full flex flex-col overflow-hidden">
         {demoPhase === 'analyzing' ? (
           <AnalyzingState />
         ) : analysisResult ? (
@@ -651,7 +642,7 @@ export function AnalysisPanel() {
             </div>
           </div>
         ) : null}
-      </motion.div>
+      </div>
 
       <QuoteDialog open={quoteOpen} onOpenChange={setQuoteOpen} />
     </>
