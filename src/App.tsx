@@ -16,6 +16,7 @@ import MLEvaluation from "./pages/MLEvaluation.tsx";
 import Prospects from "./pages/Prospects.tsx";
 import CRM from "./pages/CRM.tsx";
 import Marketplace from "./pages/Marketplace.tsx";
+import Admin from "./pages/Admin.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
