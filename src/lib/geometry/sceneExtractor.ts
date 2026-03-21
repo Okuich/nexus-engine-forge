@@ -50,18 +50,23 @@ export function featureSetToDownloadUrl(features: GeometryFeatureSet, filename: 
   const output = {
     filename,
     extracted_at: new Date().toISOString(),
-    stats: features.stats,
-    node_feature_dim: 12,
-    edge_feature_dim: 3,
-    num_nodes: features.faces.length,
-    num_edges: features.edges.length,
-    feature_matrix: features.featureMatrix,
-    edge_index: features.edgeIndex,
-    edge_features: features.edges.map((e) => [
-      e.dihedralAngle,
-      e.isConcave ? 1 : 0,
-      e.length,
-    ]),
+    stats: {
+      ...features.stats,
+      surfaceClassDistribution: features.stats.surfaceClassDistribution,
+    },
+    // ── PyG-compatible graph ─────────────────────────
+    graph: {
+      num_nodes: features.graph.numNodes,
+      num_edges: features.graph.numEdges * 2,
+      node_feature_dim: 12,
+      edge_feature_dim: 3,
+      x: features.featureMatrix,
+      edge_index: features.edgeIndex,
+      edge_attr: features.edgeAttr,
+      degree: features.graph.degree,
+      connected_components: features.stats.connectedComponents,
+    },
+    // ── Detailed per-face data ───────────────────────
     faces: features.faces.map((f) => ({
       id: f.id,
       surface_class: f.surfaceClass,
@@ -74,6 +79,16 @@ export function featureSetToDownloadUrl(features: GeometryFeatureSet, filename: 
         gaussian: +f.curvatureGaussian.toFixed(8),
         mean: +f.curvatureMean.toFixed(6),
       },
+    })),
+    // ── Adjacency list ───────────────────────────────
+    adjacency: features.graph.adjacency.map((a) => ({
+      id: a.id,
+      face_a: a.faceA,
+      face_b: a.faceB,
+      shared_vertices: a.sharedVertices,
+      dihedral_angle: +a.dihedralAngle.toFixed(6),
+      is_concave: a.isConcave,
+      edge_length: +a.edgeLength.toFixed(4),
     })),
   };
 
