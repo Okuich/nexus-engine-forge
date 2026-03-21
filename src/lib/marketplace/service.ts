@@ -99,9 +99,7 @@ export class MarketplaceService {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Authentication required');
 
-    const { data, error } = await supabase
-      .from('rfqs')
-      .insert({
+    const insertPayload = {
         title: req.title,
         description: req.description ?? null,
         part_name: req.partName,
@@ -114,11 +112,15 @@ export class MarketplaceService {
         max_lead_time_days: req.maxLeadTimeDays ?? null,
         region: req.region ?? null,
         target_cost_usd: req.targetCostUsd ?? null,
-        geometry_stats: req.geometryStats ?? {},
+        geometry_stats: (req.geometryStats ?? {}) as Record<string, unknown>,
         deadline: req.deadline ?? null,
         created_by: user.id,
-        status: 'open',
-      } as any)
+        status: 'open' as const,
+      };
+
+    const { data, error } = await (supabase
+      .from('rfqs') as any)
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -187,9 +189,7 @@ export class MarketplaceService {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Authentication required');
 
-    const { data, error } = await supabase
-      .from('supplier_profiles')
-      .upsert({
+    const upsertPayload = {
         user_id: user.id,
         company_name: profile.companyName,
         materials: profile.materials ?? [],
@@ -203,7 +203,11 @@ export class MarketplaceService {
         pricing_multiplier: profile.pricingMultiplier ?? 1.0,
         certifications: profile.certifications ?? [],
         active: profile.active ?? true,
-      } as any, { onConflict: 'user_id' })
+      };
+
+    const { data, error } = await (supabase
+      .from('supplier_profiles') as any)
+      .upsert(upsertPayload, { onConflict: 'user_id' })
       .select()
       .single();
 
@@ -243,19 +247,21 @@ export class MarketplaceService {
 
     const totalPrice = req.unitPriceUsd * rfq.quantity;
 
-    const { data, error } = await supabase
-      .from('rfq_quotes')
-      .insert({
+    const insertPayload = {
         rfq_id: req.rfqId,
-        supplier_id: req.rfqId, // will be overridden — see note below
+        supplier_id: req.rfqId,
         unit_price_usd: req.unitPriceUsd,
         total_price_usd: totalPrice,
         lead_time_days: req.leadTimeDays,
         notes: req.notes ?? null,
-        adjustments: req.adjustments ?? [],
+        adjustments: (req.adjustments ?? []) as unknown as Record<string, unknown>[],
         confidence: req.confidence ?? 0.8,
-        status: 'submitted',
-      } as any)
+        status: 'submitted' as const,
+      };
+
+    const { data, error } = await (supabase
+      .from('rfq_quotes') as any)
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -271,19 +277,21 @@ export class MarketplaceService {
 
     const totalPrice = req.unitPriceUsd * rfq.quantity;
 
-    const { data, error } = await supabase
-      .from('rfq_quotes')
-      .insert({
+    const insertPayload = {
         rfq_id: req.rfqId,
         supplier_id: supplierId,
         unit_price_usd: req.unitPriceUsd,
         total_price_usd: totalPrice,
         lead_time_days: req.leadTimeDays,
         notes: req.notes ?? null,
-        adjustments: req.adjustments ?? [],
+        adjustments: (req.adjustments ?? []) as unknown as Record<string, unknown>[],
         confidence: req.confidence ?? 0.8,
-        status: 'submitted',
-      } as any)
+        status: 'submitted' as const,
+      };
+
+    const { data, error } = await (supabase
+      .from('rfq_quotes') as any)
+      .insert(insertPayload)
       .select()
       .single();
 
