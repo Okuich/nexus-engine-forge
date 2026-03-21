@@ -1015,6 +1015,65 @@ export type Database = {
           },
         ]
       }
+      supplier_trust_scores: {
+        Row: {
+          avg_quality_rating: number
+          avg_response_time_hrs: number
+          created_at: string
+          disputes: number
+          id: string
+          last_recalculated_at: string
+          on_time_delivery_rate: number
+          quote_accuracy_rate: number
+          supplier_id: string
+          tier: string
+          total_orders: number
+          total_quotes: number
+          trust_score: number
+          updated_at: string
+        }
+        Insert: {
+          avg_quality_rating?: number
+          avg_response_time_hrs?: number
+          created_at?: string
+          disputes?: number
+          id?: string
+          last_recalculated_at?: string
+          on_time_delivery_rate?: number
+          quote_accuracy_rate?: number
+          supplier_id: string
+          tier?: string
+          total_orders?: number
+          total_quotes?: number
+          trust_score?: number
+          updated_at?: string
+        }
+        Update: {
+          avg_quality_rating?: number
+          avg_response_time_hrs?: number
+          created_at?: string
+          disputes?: number
+          id?: string
+          last_recalculated_at?: string
+          on_time_delivery_rate?: number
+          quote_accuracy_rate?: number
+          supplier_id?: string
+          tier?: string
+          total_orders?: number
+          total_quotes?: number
+          trust_score?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_trust_scores_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: true
+            referencedRelation: "supplier_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_members: {
         Row: {
           id: string
