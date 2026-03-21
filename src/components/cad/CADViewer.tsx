@@ -232,7 +232,7 @@ export function CADViewer() {
       >
         <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg px-4 py-2.5">
           <p className="text-xs font-mono text-muted-foreground">
-            {uploadedFile?.name || 'Turbine_Housing_v4.step'}
+            {uploadedFile?.name || 'Drop a CAD file to analyze'}
           </p>
           <p className="text-xs font-mono text-primary">
             {extractedFeatures

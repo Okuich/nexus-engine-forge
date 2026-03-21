@@ -131,7 +131,7 @@ export function CopilotPanel() {
             <Sparkles className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <span className="panel-title">AI Copilot</span>
+            <span className="panel-title">Midwater AI</span>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className={isStreaming ? 'status-dot-warning' : 'status-dot-online'} />
               <span className="text-[10px] text-muted-foreground font-mono">
