@@ -14,7 +14,145 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      model_versions: {
+        Row: {
+          artifact_path: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          job_id: string
+          metrics: Json | null
+          model_type: string
+          version: string
+        }
+        Insert: {
+          artifact_path?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          job_id: string
+          metrics?: Json | null
+          model_type: string
+          version: string
+        }
+        Update: {
+          artifact_path?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          job_id?: string
+          metrics?: Json | null
+          model_type?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "model_versions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "training_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_jobs: {
+        Row: {
+          completed_at: string | null
+          config: Json
+          created_at: string
+          dataset_id: string | null
+          epochs_completed: number
+          epochs_total: number
+          error_message: string | null
+          id: string
+          metrics: Json | null
+          model_type: string
+          name: string
+          progress: number
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          config?: Json
+          created_at?: string
+          dataset_id?: string | null
+          epochs_completed?: number
+          epochs_total?: number
+          error_message?: string | null
+          id?: string
+          metrics?: Json | null
+          model_type?: string
+          name: string
+          progress?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          config?: Json
+          created_at?: string
+          dataset_id?: string | null
+          epochs_completed?: number
+          epochs_total?: number
+          error_message?: string | null
+          id?: string
+          metrics?: Json | null
+          model_type?: string
+          name?: string
+          progress?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      training_metrics: {
+        Row: {
+          accuracy: number | null
+          epoch: number
+          f1_score: number | null
+          id: string
+          job_id: string
+          learning_rate: number | null
+          recorded_at: string
+          train_loss: number | null
+          val_loss: number | null
+        }
+        Insert: {
+          accuracy?: number | null
+          epoch: number
+          f1_score?: number | null
+          id?: string
+          job_id: string
+          learning_rate?: number | null
+          recorded_at?: string
+          train_loss?: number | null
+          val_loss?: number | null
+        }
+        Update: {
+          accuracy?: number | null
+          epoch?: number
+          f1_score?: number | null
+          id?: string
+          job_id?: string
+          learning_rate?: number | null
+          recorded_at?: string
+          train_loss?: number | null
+          val_loss?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_metrics_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "training_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
