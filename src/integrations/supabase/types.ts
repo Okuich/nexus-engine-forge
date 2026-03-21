@@ -243,6 +243,7 @@ export type Database = {
           employee_range: string | null
           id: string
           notes: string | null
+          outreach_email: string | null
           specialties: string | null
           state: string | null
           website: string | null
@@ -259,6 +260,7 @@ export type Database = {
           employee_range?: string | null
           id?: string
           notes?: string | null
+          outreach_email?: string | null
           specialties?: string | null
           state?: string | null
           website?: string | null
@@ -275,6 +277,7 @@ export type Database = {
           employee_range?: string | null
           id?: string
           notes?: string | null
+          outreach_email?: string | null
           specialties?: string | null
           state?: string | null
           website?: string | null
