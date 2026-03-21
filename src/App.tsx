@@ -10,6 +10,7 @@ import Login from "./pages/Login.tsx";
 import Signup from "./pages/Signup.tsx";
 import MLDashboard from "./pages/MLDashboard.tsx";
 import MLPipeline from "./pages/MLPipeline.tsx";
+import MLEvaluation from "./pages/MLEvaluation.tsx";
 import Prospects from "./pages/Prospects.tsx";
 import CRM from "./pages/CRM.tsx";
 import Marketplace from "./pages/Marketplace.tsx";
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/ml" element={<ProtectedRoute><MLDashboard /></ProtectedRoute>} />
             <Route path="/pipeline" element={<ProtectedRoute><MLPipeline /></ProtectedRoute>} />
+            <Route path="/ml/evaluation" element={<ProtectedRoute><MLEvaluation /></ProtectedRoute>} />
             <Route path="/prospects" element={<ProtectedRoute><Prospects /></ProtectedRoute>} />
             <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
             <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
