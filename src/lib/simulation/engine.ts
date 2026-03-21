@@ -252,7 +252,7 @@ function solveAirflow(
     const localVel = V * Math.sqrt(Math.max(0, 1 - Cp));
 
     // Turbulence intensity estimate
-    const distFromCenter = distance(face.centroid, bbCenter);
+    const distFromCenter = distanceV(face.centroid, bbCenterPt);
     const turbulence = config.turbulenceModel === 'laminar'
       ? 0
       : (Math.abs(face.curvatureGaussian) * 0.3 + 0.05) * (1 + distFromCenter / charLength * 0.5);
