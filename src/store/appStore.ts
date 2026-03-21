@@ -310,7 +310,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   viewMode: 'solid',
   setViewMode: (mode) => set({ viewMode: mode }),
 
-  // Demo flow
+  // Loaded geometry
+  loadedGeometry: null,
+  setLoadedGeometry: (g) => set({ loadedGeometry: g }),
+
+  // Face selection
+  selectedFaceIndex: null,
+  setSelectedFaceIndex: (i) => set({ selectedFaceIndex: i }),
+
   demoPhase: 'idle',
   setDemoPhase: (phase) => set({ demoPhase: phase }),
   uploadedFile: null,
