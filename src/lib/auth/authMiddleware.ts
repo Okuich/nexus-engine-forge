@@ -47,8 +47,12 @@ export function evaluateRouteAccess(
     return { allowed: false, reason: 'no_tenant', redirectTo: '/login' };
   }
 
+  // If no role and no specific requirements, allow access (new users without tenant)
   if (!ctx.userRole) {
-    return { allowed: false, reason: 'insufficient_role', redirectTo: '/login' };
+    if (options?.requiredRole || (options?.requiredPermissions && options.requiredPermissions.length > 0)) {
+      return { allowed: false, reason: 'insufficient_role' };
+    }
+    return { allowed: true };
   }
 
   // Check specific role requirement
