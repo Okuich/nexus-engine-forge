@@ -54,6 +54,8 @@ export interface GeometryFeatureSet {
   faces: FaceFeatures[];
   /** Per-edge features (face adjacency) */
   edges: EdgeFeatures[];
+  /** The face-adjacency graph (for downstream use) */
+  graph: FaceAdjacencyGraph;
   /** Aggregate statistics */
   stats: {
     totalFaces: number;
@@ -69,11 +71,14 @@ export interface GeometryFeatureSet {
       maxAbsCurvature: number;
       variance: number;
     };
+    connectedComponents: number;
   };
   /** Fixed-length feature matrix [numFaces x 12] for ML */
   featureMatrix: number[][];
   /** COO edge index [2 x numEdges*2] for PyG-style GNNs */
   edgeIndex: [number[], number[]];
+  /** Edge attribute matrix [numEdges*2 x 3] aligned with edgeIndex */
+  edgeAttr: number[][];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
