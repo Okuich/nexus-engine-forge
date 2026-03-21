@@ -166,30 +166,28 @@ const refund: ToolHandler<RefundInput, RefundOutput | { error: string }> = async
 
   const totalUsd = Number(order.total_usd);
   const isPartial = input.amountUsd != null && input.amountUsd < totalUsd;
-  const refundAmount = input.amountUsd ?? totalUsd;
+  const refundAmount = input.amountUsd ?? Number(order.subtotal_usd);
 
-  if (refundAmount <= 0 || refundAmount > totalUsd) {
-    return fail('refund', { error: `Invalid refund amount: $${refundAmount}. Order total is $${totalUsd}` }, Math.round(performance.now() - start));
+  if (refundAmount <= 0 || refundAmount > Number(order.subtotal_usd)) {
+    return fail('refund', { error: `Invalid refund amount: $${refundAmount}. Order subtotal is $${order.subtotal_usd}` }, Math.round(performance.now() - start));
   }
 
-  const refundCalc = calculateRefundFees(
-    Number(order.unit_price_usd),
-    order.quantity,
-    isPartial ? refundAmount : undefined,
-  );
+  // Build the original fee breakdown to pass to calculateRefundFees
+  const originalFees = calculateFees(Number(order.unit_price_usd), order.quantity);
+  const refundCalc = calculateRefundFees(originalFees, refundAmount);
 
   const result: RefundOutput = {
     orderId: input.orderId,
     refundType: isPartial ? 'partial' : 'full',
-    refundAmountUsd: refundCalc.refundAmountUsd,
-    platformFeeRefundUsd: refundCalc.platformFeeRefundUsd,
-    supplierDeductionUsd: refundCalc.supplierDeductionUsd,
+    refundAmountUsd: refundAmount,
+    platformFeeRefundUsd: refundCalc.refundPlatformFeeUsd,
+    supplierDeductionUsd: refundCalc.refundSupplierUsd,
     newOrderStatus: isPartial ? 'partially_refunded' : 'refunded',
     reason: input.reason,
   };
 
   const warnings: string[] = [];
-  if (refundCalc.refundAmountUsd > 10000) {
+  if (refundAmount > 10000) {
     warnings.push('High-value refund — may require manual approval');
   }
 
