@@ -239,7 +239,7 @@ export function extractGeometryFeatures(geometry: THREE.BufferGeometry): Geometr
   geo.computeVertexNormals();
 
   const positions = geo.attributes.position.array as Float32Array;
-  const index = geo.index!.array;
+  const index = Array.from(geo.index!.array);
   const numTris = index.length / 3;
   const numVerts = positions.length / 3;
 
