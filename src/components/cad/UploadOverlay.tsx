@@ -1,19 +1,46 @@
 import { useCallback, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileBox, FileCode, X, CheckCircle2 } from 'lucide-react';
+import { Upload, FileBox, FileCode, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
+import { parseSTLFile } from './CADViewer';
 
 const ACCEPTED = ['.step', '.stp', '.stl', '.iges', '.igs'];
 
 export function UploadOverlay() {
-  const { demoPhase, setDemoPhase, setUploadedFile, setUploadProgress, uploadProgress, runDemoAnalysis, uploadedFile } = useAppStore();
+  const {
+    demoPhase, setDemoPhase, setUploadedFile, setUploadProgress,
+    uploadProgress, runDemoAnalysis, uploadedFile, setLoadedGeometry,
+    setSelectedFaceIndex,
+  } = useAppStore();
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     setUploadedFile({ name: file.name, size: file.size });
     setDemoPhase('uploading');
     setUploadProgress(0);
+    setSelectedFaceIndex(null);
+
+    const isSTL = file.name.toLowerCase().endsWith('.stl');
+
+    // Parse STL geometry in parallel with upload animation
+    let geometryPromise: Promise<void> | null = null;
+    if (isSTL) {
+      geometryPromise = parseSTLFile(file).then((geo) => {
+        // Center and scale the geometry
+        geo.computeBoundingBox();
+        const box = geo.boundingBox!;
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = maxDim > 0 ? 3 / maxDim : 1;
+        geo.translate(-center.x, -center.y, -center.z);
+        geo.scale(scale, scale, scale);
+        setLoadedGeometry(geo);
+      }).catch((err) => {
+        console.error('STL parse error:', err);
+      });
+    }
 
     // Simulate upload progress
     let progress = 0;
@@ -23,11 +50,17 @@ export function UploadOverlay() {
         progress = 100;
         clearInterval(interval);
         setUploadProgress(100);
-        setTimeout(() => runDemoAnalysis(), 600);
+        // Wait for geometry parse to finish before starting analysis
+        const proceed = () => setTimeout(() => runDemoAnalysis(), 600);
+        if (geometryPromise) {
+          geometryPromise.then(proceed).catch(proceed);
+        } else {
+          proceed();
+        }
       }
       setUploadProgress(Math.min(progress, 100));
     }, 200);
-  }, [setUploadedFile, setDemoPhase, setUploadProgress, runDemoAnalysis]);
+  }, [setUploadedFile, setDemoPhase, setUploadProgress, runDemoAnalysis, setLoadedGeometry, setSelectedFaceIndex]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -87,27 +120,28 @@ export function UploadOverlay() {
                 Drop your CAD file here
               </h2>
               <p className="text-sm text-muted-foreground mb-6 text-center">
-                Upload STEP, STL, or IGES files for instant manufacturability analysis
+                Upload STL files for instant 3D viewing, or STEP/IGES for manufacturability analysis
               </p>
 
               <div className="flex items-center gap-3">
                 {[
-                  { ext: 'STEP', icon: FileCode },
-                  { ext: 'STL', icon: FileBox },
-                  { ext: 'IGES', icon: FileCode },
-                ].map(({ ext, icon: Icon }) => (
-                  <div key={ext} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/60 text-xs text-muted-foreground font-mono">
+                  { ext: 'STL', icon: FileBox, highlight: true },
+                  { ext: 'STEP', icon: FileCode, highlight: false },
+                  { ext: 'IGES', icon: FileCode, highlight: false },
+                ].map(({ ext, icon: Icon, highlight }) => (
+                  <div key={ext} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono ${
+                    highlight ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-secondary/60 text-muted-foreground'
+                  }`}>
                     <Icon className="w-3.5 h-3.5" />
                     .{ext.toLowerCase()}
                   </div>
                 ))}
               </div>
 
-              <p className="text-xs text-muted-foreground/60 mt-6">Max 50MB per file</p>
+              <p className="text-xs text-muted-foreground/60 mt-6">Max 20MB per file · STL files render in 3D</p>
             </div>
           </motion.div>
         ) : (
-          /* Upload progress */
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -145,3 +179,6 @@ export function UploadOverlay() {
     </AnimatePresence>
   );
 }
+
+// THREE import for Vector3 usage
+import * as THREE from 'three';

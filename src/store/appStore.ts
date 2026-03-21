@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as THREE from 'three';
 import type { GeometryFeatureSet } from '@/lib/geometry/featureExtractor';
 import { runOptimization, generateMockGraph } from '@/lib/ml/pipeline';
 import type { OptimizationResult, ImprovementMetrics } from '@/lib/ml/pipeline';
@@ -224,6 +225,14 @@ interface AppState {
   viewMode: 'solid' | 'wireframe' | 'xray';
   setViewMode: (mode: 'solid' | 'wireframe' | 'xray') => void;
 
+  // Loaded 3D geometry (from STL upload)
+  loadedGeometry: THREE.BufferGeometry | null;
+  setLoadedGeometry: (g: THREE.BufferGeometry | null) => void;
+
+  // Face selection
+  selectedFaceIndex: number | null;
+  setSelectedFaceIndex: (i: number | null) => void;
+
   // Demo flow
   demoPhase: DemoPhase;
   setDemoPhase: (phase: DemoPhase) => void;
@@ -301,7 +310,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   viewMode: 'solid',
   setViewMode: (mode) => set({ viewMode: mode }),
 
-  // Demo flow
+  // Loaded geometry
+  loadedGeometry: null,
+  setLoadedGeometry: (g) => set({ loadedGeometry: g }),
+
+  // Face selection
+  selectedFaceIndex: null,
+  setSelectedFaceIndex: (i) => set({ selectedFaceIndex: i }),
+
   demoPhase: 'idle',
   setDemoPhase: (phase) => set({ demoPhase: phase }),
   uploadedFile: null,
