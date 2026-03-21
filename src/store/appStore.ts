@@ -224,6 +224,14 @@ interface AppState {
   viewMode: 'solid' | 'wireframe' | 'xray';
   setViewMode: (mode: 'solid' | 'wireframe' | 'xray') => void;
 
+  // Loaded 3D geometry (from STL upload)
+  loadedGeometry: THREE.BufferGeometry | null;
+  setLoadedGeometry: (g: THREE.BufferGeometry | null) => void;
+
+  // Face selection
+  selectedFaceIndex: number | null;
+  setSelectedFaceIndex: (i: number | null) => void;
+
   // Demo flow
   demoPhase: DemoPhase;
   setDemoPhase: (phase: DemoPhase) => void;
