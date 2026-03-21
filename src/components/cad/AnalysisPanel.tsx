@@ -247,7 +247,20 @@ function QuoteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
                   </p>
                 )}
               </div>
-              <Button onClick={handleClose} className="w-full gap-2">
+              <Button onClick={() => {
+                if (analysisResult) {
+                  generateQuotePdf({
+                    analysis: analysisResult,
+                    fileName: uploadedFile?.name || 'Unknown_Part',
+                    email,
+                    company,
+                    quantity: Math.max(1, parseInt(quantity) || 1),
+                    totalCost,
+                    volumeDiscount,
+                  });
+                }
+                handleClose();
+              }} className="w-full gap-2">
                 <Download className="h-4 w-4" />
                 Download Quote PDF
               </Button>
