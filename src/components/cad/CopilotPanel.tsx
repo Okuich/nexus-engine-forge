@@ -1,44 +1,22 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, X, Sparkles, Loader2 } from 'lucide-react';
+import { Send, Sparkles, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { useAppStore } from '@/store/appStore';
 import { streamAgentChat, type StreamEvent } from '@/lib/agents/client';
-import { AGENT_REGISTRY, type AgentType } from '@/lib/agents/types';
+import { AgentActivityBadge } from './copilot/AgentActivityBadge';
+import { ActionButtons } from './copilot/ActionButtons';
+import { FileContextBar } from './copilot/FileContextBar';
 
-const AGENT_INFO = Object.fromEntries(
-  Object.entries(AGENT_REGISTRY).map(([k, v]) => [k, { name: v.name, description: v.description, icon: v.icon }])
-) as Record<AgentType, { name: string; description: string; icon: string }>;
-
-const suggestions = [
+const SUGGESTIONS = [
   'Full geometry analysis',
   'Check manufacturability',
   'Estimate production cost',
   'Run stress analysis',
 ];
 
-function AgentActivityBadge({ event }: { event: StreamEvent }) {
-  const agentType = event.agent as AgentType | undefined;
-  const info = agentType ? AGENT_INFO[agentType] : null;
-
-  const bgClass =
-    event.type === 'step_complete' ? 'bg-accent/10 border-accent/30' :
-    event.type === 'step_error' ? 'bg-destructive/10 border-destructive/30' :
-    'bg-primary/10 border-primary/30';
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      className={`rounded-lg border px-3 py-1.5 text-[11px] font-mono ${bgClass}`}
-    >
-      <span>{info?.icon || '⚙️'} </span>
-      <span className="text-muted-foreground">{event.content}</span>
-    </motion.div>
-  );
-}
-
 export function CopilotPanel() {
-  const { copilotOpen, toggleCopilot, chatMessages, addMessage } = useAppStore();
+  const { chatMessages, addMessage } = useAppStore();
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [agentEvents, setAgentEvents] = useState<StreamEvent[]>([]);
@@ -70,7 +48,6 @@ export function CopilotPanel() {
       const msgs = store.chatMessages;
       const last = msgs[msgs.length - 1];
       if (last?.role === 'assistant') {
-        // Update in place via store
         useAppStore.setState({
           chatMessages: msgs.map((m, i) =>
             i === msgs.length - 1 ? { ...m, content: assistantText } : m
@@ -90,15 +67,12 @@ export function CopilotPanel() {
             addMessage({ role: 'assistant', content: `❌ ${event.content}` });
           }
         },
-        onDelta: (text) => updateAssistant(text),
+        onDelta: (t) => updateAssistant(t),
         onDone: () => setIsStreaming(false),
       });
     } catch (e) {
       console.error('Agent stream error:', e);
-      addMessage({
-        role: 'assistant',
-        content: '❌ Connection error. Please try again.',
-      });
+      addMessage({ role: 'assistant', content: '❌ Connection error. Please try again.' });
       setIsStreaming(false);
     }
   }, [input, isStreaming, addMessage]);
@@ -106,25 +80,34 @@ export function CopilotPanel() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-primary" />
-          </div>
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Midwater AI</span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className={isStreaming ? 'status-dot-warning' : 'status-dot-online'} />
-              <span className="text-[10px] text-muted-foreground font-mono">
-                {isStreaming ? 'Processing...' : 'Online'}
-              </span>
-            </div>
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2 shrink-0">
+        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Sparkles className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Midwater AI</span>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <div className={isStreaming ? 'status-dot-warning' : 'status-dot-online'} />
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {isStreaming ? 'Processing...' : 'Online'}
+            </span>
           </div>
         </div>
       </div>
 
+      {/* File context */}
+      <FileContextBar />
+
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+        {chatMessages.length === 0 && !isStreaming && (
+          <div className="text-center py-8">
+            <Sparkles className="w-8 h-8 text-primary/30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Upload a CAD file and ask me anything about it.</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Or use the quick actions below.</p>
+          </div>
+        )}
+
         <AnimatePresence>
           {chatMessages.map((msg) => (
             <motion.div
@@ -134,13 +117,19 @@ export function CopilotPanel() {
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
                   msg.role === 'user'
                     ? 'bg-primary text-primary-foreground rounded-br-sm'
                     : 'bg-secondary text-secondary-foreground rounded-bl-sm'
                 }`}
               >
-                {msg.content}
+                {msg.role === 'assistant' ? (
+                  <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 [&_code]:text-primary [&_code]:bg-primary/10 [&_code]:px-1 [&_code]:rounded">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <span className="whitespace-pre-wrap">{msg.content}</span>
+                )}
               </div>
             </motion.div>
           ))}
@@ -157,7 +146,6 @@ export function CopilotPanel() {
           </div>
         )}
 
-        {/* Streaming indicator */}
         {isStreaming && (
           <div className="flex items-center gap-2 px-3 py-1">
             <Loader2 className="w-3 h-3 text-primary animate-spin" />
@@ -166,10 +154,13 @@ export function CopilotPanel() {
         )}
       </div>
 
+      {/* Action buttons */}
+      {!isStreaming && <ActionButtons onAction={handleSend} disabled={isStreaming} />}
+
       {/* Suggestions */}
-      {!isStreaming && (
+      {!isStreaming && chatMessages.length === 0 && (
         <div className="px-3 pb-2 flex flex-wrap gap-1.5">
-          {suggestions.map((s) => (
+          {SUGGESTIONS.map((s) => (
             <button
               key={s}
               onClick={() => handleSend(s)}
@@ -197,11 +188,7 @@ export function CopilotPanel() {
             disabled={!input.trim() || isStreaming}
             className="p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors disabled:opacity-30"
           >
-            {isStreaming ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
       </div>
