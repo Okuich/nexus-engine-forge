@@ -37,7 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [tenants, setTenants] = useState<TenantMembership[]>([]);
-  const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
+  const [activeTenantId, setActiveTenantId] = useState<string | null>(
+    () => localStorage.getItem('activeTenantId')
+  );
 
   const fetchTenants = useCallback(async (userId: string) => {
     const { data } = await supabase
