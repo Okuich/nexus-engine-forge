@@ -356,6 +356,159 @@ export type Database = {
           },
         ]
       }
+      price_quotes: {
+        Row: {
+          account_id: string | null
+          applied_rules: Json
+          base_cost_usd: number
+          created_at: string
+          created_by: string
+          final_price_usd: number
+          id: string
+          line_items: Json
+          margin_pct: number
+          material: string
+          metadata: Json | null
+          process: string
+          quantity: number
+        }
+        Insert: {
+          account_id?: string | null
+          applied_rules?: Json
+          base_cost_usd: number
+          created_at?: string
+          created_by: string
+          final_price_usd: number
+          id?: string
+          line_items?: Json
+          margin_pct: number
+          material: string
+          metadata?: Json | null
+          process: string
+          quantity?: number
+        }
+        Update: {
+          account_id?: string | null
+          applied_rules?: Json
+          base_cost_usd?: number
+          created_at?: string
+          created_by?: string
+          final_price_usd?: number
+          id?: string
+          line_items?: Json
+          margin_pct?: number
+          material?: string
+          metadata?: Json | null
+          process?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_quotes_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pricing_accounts: {
+        Row: {
+          account_name: string
+          account_type: string
+          active: boolean
+          base_margin_pct: number
+          created_at: string
+          created_by: string
+          id: string
+          metadata: Json | null
+          preferred_supplier_ids: string[]
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_name: string
+          account_type?: string
+          active?: boolean
+          base_margin_pct?: number
+          created_at?: string
+          created_by: string
+          id?: string
+          metadata?: Json | null
+          preferred_supplier_ids?: string[]
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_name?: string
+          account_type?: string
+          active?: boolean
+          base_margin_pct?: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          metadata?: Json | null
+          preferred_supplier_ids?: string[]
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pricing_rules: {
+        Row: {
+          account_id: string
+          active: boolean
+          adjustments: Json
+          conditions: Json
+          created_at: string
+          description: string | null
+          id: string
+          priority: number
+          rule_type: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          adjustments?: Json
+          conditions?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          priority?: number
+          rule_type: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          adjustments?: Json
+          conditions?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          priority?: number
+          rule_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_rules_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
