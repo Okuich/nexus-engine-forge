@@ -119,7 +119,7 @@ export class MarketplaceService {
         deadline: req.deadline ?? null,
         created_by: user.id,
         status: 'open',
-      } as any)
+      } satisfies TablesInsert<'rfqs'>)
       .select()
       .single();
 
