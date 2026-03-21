@@ -33,6 +33,32 @@ export async function runInference(graph: InferenceRequest): Promise<InferenceRe
   return data as InferenceResult;
 }
 
+// ─── Optimization Service ───────────────────────────────────────
+
+export interface OptimizationResult {
+  original_score: InferenceResult;
+  optimized_score: InferenceResult;
+  improvement: number;
+  improvement_pct: number;
+  mutations_applied: string[];
+  generations_completed: number;
+  candidates_evaluated: number;
+  runtime_ms: number;
+  best_graph: InferenceRequest;
+}
+
+export async function runOptimization(
+  graph: InferenceRequest,
+  material?: string,
+  config?: { population_size?: number; generations?: number; max_time_ms?: number }
+): Promise<OptimizationResult> {
+  const { data, error } = await supabase.functions.invoke('ml-inference', {
+    body: { action: 'optimize', graph, material, config },
+  });
+  if (error) throw new Error(error.message);
+  return data as OptimizationResult;
+}
+
 // ─── Pipeline Service ───────────────────────────────────────────
 
 export interface PipelineStartResult {
