@@ -223,19 +223,31 @@ export function CADViewer() {
         ))}
       </motion.div>
 
-      {/* Model info */}
+      {/* Model info + Extract button */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.7 }}
-        className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-4 py-2.5"
+        className="absolute bottom-4 left-4 flex items-end gap-2"
       >
-        <p className="text-xs font-mono text-muted-foreground">
-          Turbine_Housing_v4.step
-        </p>
-        <p className="text-xs font-mono text-primary">
-          Vertices: 24,847 · Faces: 49,692
-        </p>
+        <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg px-4 py-2.5">
+          <p className="text-xs font-mono text-muted-foreground">
+            {uploadedFile?.name || 'Turbine_Housing_v4.step'}
+          </p>
+          <p className="text-xs font-mono text-primary">
+            {extractedFeatures
+              ? `Faces: ${extractedFeatures.stats.totalFaces.toLocaleString()} · Edges: ${extractedFeatures.stats.totalEdges.toLocaleString()} · Vol: ${extractedFeatures.stats.volume.toFixed(1)}`
+              : 'Vertices: 24,847 · Faces: 49,692'}
+          </p>
+        </div>
+        <button
+          onClick={handleExtractFeatures}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+        >
+          <Cpu className="w-3.5 h-3.5" />
+          Extract Features
+          <Download className="w-3 h-3 opacity-60" />
+        </button>
       </motion.div>
     </div>
   );
