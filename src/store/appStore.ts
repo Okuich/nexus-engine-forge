@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { GeometryFeatureSet } from '@/lib/geometry/featureExtractor';
+import { runOptimization, generateMockGraph } from '@/lib/ml/pipeline';
+import type { OptimizationResult, ImprovementMetrics } from '@/lib/ml/pipeline';
 
 export interface Job {
   id: string;
@@ -80,6 +82,10 @@ interface AppState {
   runDemoAnalysis: () => void;
   runOptimize: () => void;
 
+  // Optimization results
+  optimizationResult: OptimizationResult | null;
+  setOptimizationResult: (r: OptimizationResult | null) => void;
+
   // Geometry features
   extractedFeatures: GeometryFeatureSet | null;
   setExtractedFeatures: (f: GeometryFeatureSet | null) => void;
@@ -148,9 +154,50 @@ export const useAppStore = create<AppState>((set, get) => ({
     setTimeout(() => set({ analysisResult: MOCK_ANALYSIS, demoPhase: 'results' }), 2800);
   },
 
+  optimizationResult: null,
+  setOptimizationResult: (r) => set({ optimizationResult: r }),
+
   runOptimize: () => {
-    set({ demoPhase: 'optimizing' });
-    setTimeout(() => set({ analysisResult: OPTIMIZED_ANALYSIS, demoPhase: 'optimized' }), 3200);
+    const state = get();
+    set({ demoPhase: 'optimizing', optimizationResult: null });
+
+    // Use the ML model-backed optimizer
+    const fileName = state.uploadedFile?.name ?? 'part.step';
+    const graph = generateMockGraph(fileName);
+    graph.material = 'Ti-6Al-4V';
+
+    runOptimization(graph, 'Ti-6Al-4V', {
+      objectives: ['cost', 'manufacturability'],
+      population_size: 20,
+      generations: 8,
+      cache_enabled: true,
+    }).then((result) => {
+      const optimizedAnalysis: AnalysisResult = {
+        manufacturability: result.optimized_score.manufacturability_score,
+        cost: {
+          material: Math.round(result.optimized_score.estimated_cost_usd * 0.2),
+          machining: Math.round(result.optimized_score.estimated_cost_usd * 0.6),
+          tooling: Math.round(result.optimized_score.estimated_cost_usd * 0.2),
+          total: result.optimized_score.estimated_cost_usd,
+        },
+        risks: result.optimized_score.risk_regions.map((r, i) => ({
+          id: String(i),
+          severity: r.severity as RiskItem['severity'],
+          title: r.description.split(':')[0] ?? 'Risk',
+          description: r.description,
+        })),
+        geometry: state.analysisResult?.geometry ?? { faces: 42, edges: 98, holes: 10, minThickness: 2.1, volume: 271.8 },
+      };
+      set({
+        analysisResult: optimizedAnalysis,
+        optimizationResult: result,
+        demoPhase: 'optimized',
+      });
+    }).catch((err) => {
+      console.error('Optimization failed:', err);
+      // Fallback to mock
+      set({ analysisResult: OPTIMIZED_ANALYSIS, demoPhase: 'optimized' });
+    });
   },
 
   jobs: [

@@ -1,7 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, useCallback } from 'react';
-import { startPipeline, getPipelineStatus, listPipelines, runInference, generateMockGraph } from '@/lib/ml/pipeline';
-import type { InferenceResult } from '@/lib/ml/pipeline';
+import { useEffect, useState } from 'react';
+import {
+  startPipeline,
+  listPipelines,
+  runInference,
+  runOptimization,
+  generateMockGraph,
+} from '@/lib/ml/pipeline';
+import type {
+  InferenceResult,
+  OptimizationResult,
+  OptimizationConfig,
+} from '@/lib/ml/pipeline';
 import type { TrainingJob } from '@/lib/ml/types';
 import { subscribeToJob } from '@/lib/ml/orchestrator';
 
@@ -28,6 +38,22 @@ export function useQuickInference() {
       graph.material = params.material;
       graph.process = params.process;
       return runInference(graph);
+    },
+  });
+}
+
+export function useOptimization() {
+  return useMutation({
+    mutationFn: async (params: {
+      fileName: string;
+      material: string;
+      process: string;
+      config?: OptimizationConfig;
+    }) => {
+      const graph = generateMockGraph(params.fileName);
+      graph.material = params.material;
+      graph.process = params.process;
+      return runOptimization(graph, params.material, params.config);
     },
   });
 }

@@ -33,16 +33,50 @@ export async function runInference(graph: InferenceRequest): Promise<InferenceRe
   return data as InferenceResult;
 }
 
+export async function runBatchInference(graphs: InferenceRequest[]): Promise<{
+  results: InferenceResult[];
+  cache_hits: number;
+}> {
+  const { data, error } = await supabase.functions.invoke('ml-inference', {
+    body: { action: 'predict_batch', graphs },
+  });
+  if (error) throw new Error(error.message);
+  return data as { results: InferenceResult[]; cache_hits: number };
+}
+
 // ─── Optimization Service ───────────────────────────────────────
+
+export interface ImprovementMetrics {
+  manufacturability_delta: number;
+  manufacturability_pct: number;
+  cost_delta: number;
+  cost_pct: number;
+  risk_level_before: string;
+  risk_level_after: string;
+  risks_eliminated: number;
+  recommendations_resolved: number;
+}
+
+export interface OptimizationConfig {
+  population_size?: number;
+  generations?: number;
+  max_time_ms?: number;
+  batch_size?: number;
+  cache_enabled?: boolean;
+  objectives?: ('cost' | 'manufacturability')[];
+}
 
 export interface OptimizationResult {
   original_score: InferenceResult;
   optimized_score: InferenceResult;
   improvement: number;
   improvement_pct: number;
+  improvement_metrics: ImprovementMetrics;
   mutations_applied: string[];
   generations_completed: number;
   candidates_evaluated: number;
+  cache_hits: number;
+  cache_hit_rate: number;
   runtime_ms: number;
   best_graph: InferenceRequest;
 }
@@ -50,7 +84,7 @@ export interface OptimizationResult {
 export async function runOptimization(
   graph: InferenceRequest,
   material?: string,
-  config?: { population_size?: number; generations?: number; max_time_ms?: number }
+  config?: OptimizationConfig
 ): Promise<OptimizationResult> {
   const { data, error } = await supabase.functions.invoke('ml-inference', {
     body: { action: 'optimize', graph, material, config },
@@ -100,10 +134,24 @@ export async function listPipelines(): Promise<TrainingJob[]> {
 
 export function generateMockGraph(fileName: string): InferenceRequest {
   const nodeCount = 20 + Math.floor(Math.random() * 40);
+  const faceTypes = ['face', 'cylindrical', 'planar', 'conical', 'spherical'];
   const nodes = Array.from({ length: nodeCount }, (_, i) => ({
     id: `n${i}`,
-    type: i % 3 === 0 ? 'face' : i % 3 === 1 ? 'edge' : 'vertex',
-    features: Array.from({ length: 8 }, () => Math.random()),
+    type: faceTypes[i % faceTypes.length],
+    features: [
+      Math.random() * 200,                              // area
+      Math.random() * 2 - 1,                            // nx
+      Math.random() * 2 - 1,                            // ny
+      0.5 + Math.random() * 0.5,                        // nz
+      Math.random() * 20 - 10,                          // cx
+      Math.random() * 20 - 10,                          // cy
+      Math.random() * 20 - 10,                          // cz
+      Math.random() * 0.3,                              // curv_min
+      Math.random() * 0.4,                              // curv_max
+      Math.random() * 0.05,                             // curv_gaussian
+      Math.random() * 0.35,                             // curv_mean
+      Math.floor(Math.random() * 20) + 2,               // num_triangles
+    ],
   }));
 
   const edges: InferenceRequest['edges'] = [];
