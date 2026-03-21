@@ -684,9 +684,9 @@ function getAgentForTool(tool: string): BaseAgent {
   return agent;
 }
 
-// ─── Execution with Cache & Retry ────────────────────────────────
+// ─── Execution with Cache, Retry & Output Validation ─────────────
 
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 3;
 const CACHEABLE_TOOLS = new Set([
   "analyze_faces", "analyze_edges", "detect_holes", "measure_thickness",
   "check_draft_angles", "build_topology_graph", "run_stress_analysis",
@@ -694,17 +694,36 @@ const CACHEABLE_TOOLS = new Set([
   "estimate_machining_time",
 ]);
 
-async function executeWithCacheAndRetry(
+interface ExecutionOutcome {
+  success: boolean;
+  data: Record<string, unknown>;
+  retries: number;
+  cached: boolean;
+  agent: AgentType;
+  warnings: string[];
+  outputValidation: OutputValidationResult;
+  confidence: number;
+  confidenceGrade: "HIGH" | "MEDIUM" | "LOW";
+  durationMs: number;
+}
+
+async function executeWithValidation(
   tool: string, args: Record<string, unknown>,
   supabaseAdmin: any, tenantId?: string,
-): Promise<{ success: boolean; data: Record<string, unknown>; retries: number; cached: boolean; agent: AgentType; warnings: string[] }> {
+  emitRetry?: (retry: number, reason: string) => void,
+): Promise<ExecutionOutcome> {
+  const execStart = Date.now();
   const cacheKey = getCacheKey(tool, args);
 
   // In-memory cache check
   if (CACHEABLE_TOOLS.has(tool)) {
     const cached = memoryCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
-      return { success: true, data: cached.data as Record<string, unknown>, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
+      const data = cached.data as Record<string, unknown>;
+      const ov = validateToolOutput(tool, data);
+      const dur = Date.now() - execStart;
+      const conf = computeStepConfidence(tool, data, ov, true, 0, dur);
+      return { success: true, data, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [], outputValidation: ov, confidence: conf, confidenceGrade: confidenceGrade(conf), durationMs: dur };
     }
     // DB cache check
     if (supabaseAdmin && tenantId) {
@@ -713,20 +732,40 @@ async function executeWithCacheAndRetry(
           .from("agent_memory").select("value, expires_at")
           .eq("tenant_id", tenantId).eq("memory_type", "tool_result_cache").eq("key", cacheKey).maybeSingle();
         if (memRow && (!memRow.expires_at || new Date(memRow.expires_at) > new Date())) {
-          memoryCache.set(cacheKey, { data: memRow.value, expires: Date.now() + 300_000 });
-          return { success: true, data: memRow.value as Record<string, unknown>, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
+          const data = memRow.value as Record<string, unknown>;
+          memoryCache.set(cacheKey, { data, expires: Date.now() + 300_000 });
+          const ov = validateToolOutput(tool, data);
+          const dur = Date.now() - execStart;
+          const conf = computeStepConfidence(tool, data, ov, true, 0, dur);
+          return { success: true, data, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [], outputValidation: ov, confidence: conf, confidenceGrade: confidenceGrade(conf), durationMs: dur };
         }
       } catch { /* miss */ }
     }
   }
 
-  // Execute via agent class with retries
+  // Execute via agent class with retries + output validation
   const agent = getAgentForTool(tool);
   let retries = 0;
+  let lastOutput: AgentOutput | null = null;
+
   while (retries <= MAX_RETRIES) {
     const output = await agent.execute(tool, args);
+    lastOutput = output;
+
     if (output.success) {
-      if (CACHEABLE_TOOLS.has(tool)) {
+      // Validate output
+      const ov = validateToolOutput(tool, output.data);
+
+      if (!ov.valid && retries < MAX_RETRIES) {
+        // Output validation failed — retry
+        retries++;
+        emitRetry?.(retries, `Output validation failed: ${ov.errors.join("; ")}`);
+        await new Promise(r => setTimeout(r, 300 * retries));
+        continue;
+      }
+
+      // Cache valid results
+      if (CACHEABLE_TOOLS.has(tool) && ov.valid) {
         const ttl = 600_000;
         memoryCache.set(cacheKey, { data: output.data, expires: Date.now() + ttl });
         if (supabaseAdmin && tenantId) {
@@ -736,13 +775,22 @@ async function executeWithCacheAndRetry(
           }, { onConflict: "tenant_id,memory_type,key" }).then(() => {});
         }
       }
-      return { ...output, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings };
+
+      const dur = Date.now() - execStart;
+      const conf = computeStepConfidence(tool, output.data, ov, false, retries, dur);
+      return { success: true, data: output.data, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings, outputValidation: ov, confidence: conf, confidenceGrade: confidenceGrade(conf), durationMs: dur };
     }
+
+    // Execution failed — retry
     retries++;
-    if (retries > MAX_RETRIES) return { success: false, data: output.data, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings };
+    if (retries > MAX_RETRIES) break;
+    emitRetry?.(retries, `Execution error: ${(output.data as any).error || "unknown"}`);
     await new Promise(r => setTimeout(r, 500 * retries));
   }
-  return { success: false, data: { error: "Max retries exceeded" }, retries: MAX_RETRIES, cached: false, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
+
+  const dur = Date.now() - execStart;
+  const failedOV: OutputValidationResult = { valid: false, errors: ["Execution failed after max retries"], warnings: [] };
+  return { success: false, data: lastOutput?.data || { error: "Max retries exceeded" }, retries: MAX_RETRIES, cached: false, agent: agent.type, warnings: lastOutput?.metadata.warnings || [], outputValidation: failedOV, confidence: 0, confidenceGrade: "LOW", durationMs: dur };
 }
 
 // ─── Structured Planner ──────────────────────────────────────────
