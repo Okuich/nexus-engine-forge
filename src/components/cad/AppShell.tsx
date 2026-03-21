@@ -1,10 +1,21 @@
 import { motion } from 'framer-motion';
-import { Activity, Bell, Settings, Cpu } from 'lucide-react';
+import { Activity, Bell, Settings, Cpu, RotateCcw } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { CADViewer } from './CADViewer';
-import { CopilotPanel } from './CopilotPanel';
+import { AnalysisPanel } from './AnalysisPanel';
+import { UploadOverlay } from './UploadOverlay';
+import { useAppStore } from '@/store/appStore';
 
 export function AppShell() {
+  const { demoPhase, setDemoPhase, setUploadedFile, setAnalysisResult, setUploadProgress } = useAppStore();
+
+  const handleReset = () => {
+    setDemoPhase('idle');
+    setUploadedFile(null);
+    setAnalysisResult(null);
+    setUploadProgress(0);
+  };
+
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
       {/* Top bar */}
@@ -25,6 +36,17 @@ export function AppShell() {
         </div>
 
         <div className="flex items-center gap-1">
+          {demoPhase !== 'idle' && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={handleReset}
+              className="flex items-center gap-1.5 mr-2 px-2.5 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              New Upload
+            </motion.button>
+          )}
           <div className="flex items-center gap-2 mr-3 px-2.5 py-1 rounded-md bg-secondary/50">
             <Activity className="w-3.5 h-3.5 text-success" />
             <span className="text-xs font-mono text-muted-foreground">GPU: 42% · RAM: 6.1GB</span>
@@ -40,10 +62,13 @@ export function AppShell() {
       </motion.header>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         <Sidebar />
-        <CADViewer />
-        <CopilotPanel />
+        <div className="flex-1 relative">
+          <CADViewer />
+          <UploadOverlay />
+        </div>
+        <AnalysisPanel />
       </div>
     </div>
   );
