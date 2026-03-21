@@ -42,8 +42,16 @@ function scale(v: Vec3, s: number): Vec3 {
   return [v[0] * s, v[1] * s, v[2] * s];
 }
 
-function distance(a: Vec3, b: Vec3): number {
+function distanceV(a: Vec3, b: Vec3): number {
   return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+}
+
+function bbDiagonal(bb: { min: Vec3; max: Vec3 }): number {
+  return distanceV(bb.min, bb.max);
+}
+
+function bbCenter(bb: { min: Vec3; max: Vec3 }): Vec3 {
+  return [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2];
 }
 
 // ─── Structural Solver ───────────────────────────────────────────
