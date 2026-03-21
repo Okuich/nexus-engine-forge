@@ -84,7 +84,7 @@ function mapRFQQuote(row: Record<string, unknown>): RFQQuote {
     status: row.status as RFQQuote['status'],
     rank: row.rank as number | null,
     score: row.score != null ? Number(row.score) : null,
-    scoreBreakdown: (row.score_breakdown as ScoreBreakdown) ?? { costScore: 0, leadTimeScore: 0, qualityScore: 0, certificationScore: 0, complexityFitScore: 0, totalScore: 0 },
+    scoreBreakdown: (row.score_breakdown as ScoreBreakdown) ?? { costScore: 0, leadTimeScore: 0, qualityScore: 0, certificationScore: 0, complexityFitScore: 0, trustScore: 0, totalScore: 0 },
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
