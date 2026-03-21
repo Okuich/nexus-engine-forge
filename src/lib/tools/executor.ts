@@ -7,7 +7,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { calculateFees, calculateRefund } from '@/lib/payments/feeEngine';
+import { calculateFees, calculateRefundFees } from '@/lib/payments/feeEngine';
 import type {
   ToolResult,
   CheckOrderInput,
