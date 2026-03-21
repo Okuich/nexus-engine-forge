@@ -6,6 +6,7 @@ import { useMarketplace } from '@/hooks/useMarketplace';
 import { OpenRFQsTab } from '@/components/marketplace/OpenRFQsTab';
 import { MyQuotesTab } from '@/components/marketplace/MyQuotesTab';
 import { SupplierProfileTab } from '@/components/marketplace/SupplierProfileTab';
+import { CreateRFQDialog } from '@/components/marketplace/CreateRFQDialog';
 
 type Tab = 'rfqs' | 'quotes' | 'profile';
 
@@ -35,15 +36,18 @@ export default function Marketplace() {
           <Store className="w-5 h-5 text-primary" />
           <h1 className="text-sm font-semibold tracking-tight">Supplier Marketplace</h1>
         </div>
-        {marketplace.error && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded-md font-mono"
-          >
-            {marketplace.error}
-          </motion.div>
-        )}
+        <div className="flex items-center gap-3">
+          <CreateRFQDialog onSubmit={marketplace.createRFQ} loading={marketplace.loading} />
+          {marketplace.error && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded-md font-mono"
+            >
+              {marketplace.error}
+            </motion.div>
+          )}
+        </div>
       </header>
 
       {/* Tab bar */}
