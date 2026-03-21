@@ -387,7 +387,7 @@ function mergeCriticalRegions(regions: CriticalRegion[], mergeRadius: number): C
       if (used.has(j)) continue;
       if (
         regions[i].severity === regions[j].severity &&
-        distance(regions[i].center, regions[j].center) < mergeRadius
+        distanceV(regions[i].center, regions[j].center) < mergeRadius
       ) {
         group.push(regions[j]);
         used.add(j);
