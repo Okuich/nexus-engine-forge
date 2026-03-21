@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { generateQuotePdf } from '@/lib/generateQuotePdf';
 
 function AnimatedScore({ value, label, delay = 0 }: { value: number; label: string; delay?: number }) {
   const [displayed, setDisplayed] = useState(0);
