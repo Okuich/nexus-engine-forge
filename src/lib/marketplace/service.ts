@@ -189,9 +189,7 @@ export class MarketplaceService {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Authentication required');
 
-    const { data, error } = await supabase
-      .from('supplier_profiles')
-      .upsert({
+    const upsertPayload = {
         user_id: user.id,
         company_name: profile.companyName,
         materials: profile.materials ?? [],
@@ -205,7 +203,11 @@ export class MarketplaceService {
         pricing_multiplier: profile.pricingMultiplier ?? 1.0,
         certifications: profile.certifications ?? [],
         active: profile.active ?? true,
-      } satisfies TablesInsert<'supplier_profiles'>, { onConflict: 'user_id' })
+      };
+
+    const { data, error } = await (supabase
+      .from('supplier_profiles') as any)
+      .upsert(upsertPayload, { onConflict: 'user_id' })
       .select()
       .single();
 
