@@ -91,7 +91,7 @@ function solveStructural(
     let minDistToFixed = Infinity;
     for (const fi of config.fixedFaces) {
       if (fi < faceCount) {
-        const d = distance(face.centroid, faces[fi].centroid);
+        const d = distanceV(face.centroid, faces[fi].centroid);
         minDistToFixed = Math.min(minDistToFixed, d);
       }
     }
