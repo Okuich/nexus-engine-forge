@@ -6,7 +6,6 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import type { TablesInsert } from '@/integrations/supabase/types';
 import { matchSuppliersToRFQ } from './matchingEngine';
 import { rankQuotes } from './rankingEngine';
 import type {
