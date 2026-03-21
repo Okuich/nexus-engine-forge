@@ -56,7 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
       setTenants(memberships);
       if (memberships.length > 0 && !activeTenantId) {
-        setActiveTenantId(memberships[0].tenant_id);
+        const stored = localStorage.getItem('activeTenantId');
+        const valid = memberships.find(m => m.tenant_id === stored);
+        setActiveTenantId(valid ? stored : memberships[0].tenant_id);
       }
     }
   }, [activeTenantId]);
