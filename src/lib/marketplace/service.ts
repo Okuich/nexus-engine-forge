@@ -245,6 +245,10 @@ export class MarketplaceService {
       throw new Error(`RFQ is ${rfq.status}, not accepting quotes`);
     }
 
+    if (!req.supplierId) {
+      throw new Error('supplierId is required to submit a quote');
+    }
+
     const totalPrice = req.unitPriceUsd * rfq.quantity;
 
     const insertPayload = {
