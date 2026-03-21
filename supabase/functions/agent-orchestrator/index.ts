@@ -1042,10 +1042,13 @@ serve(async (req) => {
           }
         }
 
-        // Execute DAG groups
+        // Execute DAG groups with validation & confidence
         const stepResults = new Map<string, Record<string, unknown>>();
-        const toolResults: { step_id: string; tool: string; agent: string; result: Record<string, unknown>; cached: boolean; duration_ms: number }[] = [];
+        const stepMeta = new Map<string, { tool: string; agent: string }>();
+        const stepConfidences: StepConfidence[] = [];
+        const toolResults: { step_id: string; tool: string; agent: string; result: Record<string, unknown>; cached: boolean; duration_ms: number; confidence: number; confidence_grade: string; output_validation: OutputValidationResult }[] = [];
         let cacheHits = 0;
+        let totalRetries = 0;
 
         for (let gi = 0; gi < parallelGroups.length; gi++) {
           const group = parallelGroups[gi];
@@ -1054,37 +1057,104 @@ serve(async (req) => {
           }
 
           const promises = group.map(async (step) => {
-            const stepStart = Date.now();
-            // Resolve input references from prior step results
             const resolvedInput = resolveInputRefs(step.input, stepResults);
 
             emit({ event: "step_start", agent: step.agent, tool: step.tool, stepId: step.id, content: `${step.rationale}` });
 
-            const result = await executeWithCacheAndRetry(step.tool, resolvedInput, supabaseAdmin, tenantId);
-            const duration = Date.now() - stepStart;
+            const result = await executeWithValidation(
+              step.tool, resolvedInput, supabaseAdmin, tenantId,
+              (retry, reason) => {
+                emit({ event: "step_retry" as any, agent: step.agent, tool: step.tool, stepId: step.id, content: `🔄 Retry ${retry}/${MAX_RETRIES}: ${reason}` });
+              },
+            );
+
+            totalRetries += result.retries;
 
             if (result.cached) {
               cacheHits++;
-              emit({ event: "cache_hit", agent: step.agent, tool: step.tool, stepId: step.id, content: `⚡ ${step.tool} [cached]`, cached: true });
+              emit({ event: "cache_hit", agent: step.agent, tool: step.tool, stepId: step.id, content: `⚡ ${step.tool} [cached]`, cached: true, confidence: result.confidence });
+            }
+
+            // Emit output validation result
+            if (result.outputValidation.errors.length > 0 || result.outputValidation.warnings.length > 0) {
+              emit({
+                event: "output_validation" as any, agent: step.agent, tool: step.tool, stepId: step.id,
+                content: `🔍 Output validation: ${result.outputValidation.valid ? "PASS" : "FAIL"} — ${result.outputValidation.errors.concat(result.outputValidation.warnings).join("; ")}`,
+                data: { valid: result.outputValidation.valid, errors: result.outputValidation.errors, warnings: result.outputValidation.warnings },
+              });
             }
 
             if (result.success) {
               stepResults.set(step.id, result.data);
-              emit({ event: "step_complete", agent: step.agent, tool: step.tool, stepId: step.id, data: result.data, content: `✓ ${step.tool} (${duration}ms)${result.cached ? " [cached]" : ""}` });
+              stepMeta.set(step.id, { tool: step.tool, agent: step.agent });
+              emit({
+                event: "step_complete", agent: step.agent, tool: step.tool, stepId: step.id, data: result.data,
+                content: `✓ ${step.tool} (${result.durationMs}ms)${result.cached ? " [cached]" : ""}${result.retries > 0 ? ` [${result.retries} retries]` : ""} — confidence: ${(result.confidence * 100).toFixed(0)}% ${result.confidenceGrade}`,
+                confidence: result.confidence,
+              });
             } else {
-              emit({ event: "step_error", agent: step.agent, tool: step.tool, stepId: step.id, content: `✗ ${step.tool}: ${(result.data as any).error}` });
+              emit({ event: "step_error", agent: step.agent, tool: step.tool, stepId: step.id, content: `✗ ${step.tool}: ${(result.data as any).error || "failed after retries"}`, confidence: 0 });
             }
 
-            toolResults.push({ step_id: step.id, tool: step.tool, agent: step.agent, result: result.data, cached: result.cached, duration_ms: duration });
+            stepConfidences.push({
+              stepId: step.id, tool: step.tool, agent: step.agent,
+              score: result.confidence, grade: result.confidenceGrade,
+              factors: { validation_errors: result.outputValidation.errors.length, validation_warnings: result.outputValidation.warnings.length, retries: result.retries, cached: result.cached ? 1 : 0, duration_ms: result.durationMs },
+            });
+
+            toolResults.push({ step_id: step.id, tool: step.tool, agent: step.agent, result: result.data, cached: result.cached, duration_ms: result.durationMs, confidence: result.confidence, confidence_grade: result.confidenceGrade, output_validation: result.outputValidation });
           });
 
           await Promise.all(promises);
         }
 
-        // Persist execution
+        // ── Phase 3: Cross-Result Consistency Checks ──
+        const consistencyIssues = checkCrossResultConsistency(stepResults, stepMeta);
+        if (consistencyIssues.length > 0) {
+          for (const issue of consistencyIssues) {
+            emit({
+              event: "consistency_check" as any,
+              content: `${issue.severity === "high" ? "🚨" : issue.severity === "medium" ? "⚠️" : "ℹ️"} [${issue.type}] ${issue.description}`,
+              data: { type: issue.type, severity: issue.severity, involved_steps: issue.involvedSteps },
+            });
+          }
+          // Penalize confidence for high-severity consistency issues
+          for (const issue of consistencyIssues.filter(i => i.severity === "high")) {
+            for (const stepId of issue.involvedSteps) {
+              const sc = stepConfidences.find(c => c.stepId === stepId);
+              if (sc) {
+                sc.score = Math.max(0, sc.score - 0.15);
+                sc.grade = confidenceGrade(sc.score);
+              }
+            }
+          }
+        }
+
+        // ── Phase 4: Confidence Report ──
+        const avgConfidence = stepConfidences.length > 0
+          ? +(stepConfidences.reduce((s, c) => s + c.score, 0) / stepConfidences.length).toFixed(2)
+          : 0;
+        const overallGrade = confidenceGrade(avgConfidence);
+        const lowConfSteps = stepConfidences.filter(c => c.grade === "LOW");
+
+        emit({
+          event: "confidence_report" as any,
+          content: `📊 Overall confidence: ${(avgConfidence * 100).toFixed(0)}% (${overallGrade})${consistencyIssues.length > 0 ? ` — ${consistencyIssues.length} consistency issue(s)` : ""}${lowConfSteps.length > 0 ? ` — ${lowConfSteps.length} low-confidence step(s)` : ""}`,
+          confidence: avgConfidence,
+          data: {
+            overall_confidence: avgConfidence,
+            overall_grade: overallGrade,
+            step_confidences: stepConfidences,
+            consistency_issues: consistencyIssues,
+            total_retries: totalRetries,
+            cache_hits: cacheHits,
+          },
+        });
+
+        // Persist execution with validation data
         if (supabaseAdmin) {
           const totalMs = Date.now() - startTime;
-          emit({ event: "memory_store", content: `💾 Execution: ${plan.steps.length} steps, ${cacheHits} cached, ${totalMs}ms total` });
+          emit({ event: "memory_store", content: `💾 Execution: ${plan.steps.length} steps, ${cacheHits} cached, ${totalRetries} retries, ${totalMs}ms total` });
 
           supabaseAdmin.from("agent_executions").insert({
             tenant_id: tenantId || null,
@@ -1094,21 +1164,25 @@ serve(async (req) => {
             status: "completed",
             total_duration_ms: totalMs,
             model_used: "google/gemini-3-flash-preview",
-            token_usage: { cache_hits: cacheHits, parallel_groups: parallelGroups.length },
+            token_usage: { cache_hits: cacheHits, parallel_groups: parallelGroups.length, total_retries: totalRetries, overall_confidence: avgConfidence, consistency_issues: consistencyIssues.length },
             completed_at: new Date().toISOString(),
           }).then(() => {});
         }
 
-        // ── Phase 3: LLM Synthesis ──
+        // ── Phase 5: LLM Synthesis (with confidence context) ──
         const toolSummary = toolResults.map(tr =>
-          `[${tr.agent}/${tr.tool}] (step ${tr.step_id}${tr.cached ? ", cached" : ""}):\n${JSON.stringify(tr.result, null, 1)}`
+          `[${tr.agent}/${tr.tool}] (step ${tr.step_id}${tr.cached ? ", cached" : ""}, confidence: ${(tr.confidence * 100).toFixed(0)}% ${tr.confidence_grade}):\n${JSON.stringify(tr.result, null, 1)}`
         ).join("\n\n");
+
+        const consistencySummary = consistencyIssues.length > 0
+          ? `\n\nConsistency issues found:\n${consistencyIssues.map(i => `- [${i.severity}] ${i.description}`).join("\n")}`
+          : "";
 
         const synthesisMessages = [
           { role: "system", content: SYNTHESIS_SYSTEM },
           ...messages,
-          { role: "assistant", content: `I executed a ${plan.steps.length}-step plan: ${plan.goal}\n\nPlan reasoning: ${plan.reasoning}\n\nTool results:\n${toolSummary}` },
-          { role: "user", content: "Synthesize these results into a clear engineering response for the user. Cite specific numbers." },
+          { role: "assistant", content: `I executed a ${plan.steps.length}-step plan: ${plan.goal}\n\nPlan reasoning: ${plan.reasoning}\n\nOverall confidence: ${(avgConfidence * 100).toFixed(0)}% (${overallGrade})\n\nTool results:\n${toolSummary}${consistencySummary}` },
+          { role: "user", content: "Synthesize these results into a clear engineering response for the user. Cite specific numbers. If confidence is below 85%, note which results have lower confidence and why. Mention any consistency issues found." },
         ];
 
         const synthesisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
