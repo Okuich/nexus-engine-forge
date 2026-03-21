@@ -3,6 +3,9 @@
  *
  * Scores and ranks supplier quotes using a weighted
  * multi-criteria decision analysis (MCDA) approach.
+ *
+ * Incorporates trust scores from the trust scoring system
+ * for a holistic supplier evaluation.
  */
 
 import type {
@@ -12,6 +15,7 @@ import type {
   SupplierProfile,
 } from './types';
 import { DEFAULT_RANKING_WEIGHTS } from './types';
+import type { TrustScoreResult } from '@/lib/trust';
 
 interface RankingContext {
   targetCostUsd: number | null;
@@ -23,12 +27,15 @@ interface RankingContext {
 /**
  * Score and rank an array of quotes for the same RFQ.
  * Mutates the rank and score fields on each quote.
+ *
+ * @param trustScores — map of supplierId → TrustScoreResult (optional)
  */
 export function rankQuotes(
   quotes: RFQQuote[],
   suppliers: Map<string, SupplierProfile>,
   context: RankingContext,
   weights: RankingWeights = DEFAULT_RANKING_WEIGHTS,
+  trustScores?: Map<string, TrustScoreResult>,
 ): RFQQuote[] {
   if (quotes.length === 0) return [];
 
@@ -44,6 +51,7 @@ export function rankQuotes(
 
   for (const quote of quotes) {
     const supplier = suppliers.get(quote.supplierId);
+    const trust = trustScores?.get(quote.supplierId);
 
     // Cost score: lower is better (0-100)
     const costScore = 100 - ((quote.unitPriceUsd - minPrice) / priceRange) * 100;
@@ -79,12 +87,16 @@ export function rankQuotes(
         : Math.max(0, 60 + headroom * 300);
     }
 
+    // Trust score: directly from trust system, fallback to neutral 50
+    const trustScore = trust?.trustScore ?? 50;
+
     const breakdown: ScoreBreakdown = {
       costScore: round(costScore + targetBonus),
       leadTimeScore: round(leadTimeScore),
       qualityScore: round(qualityScore),
       certificationScore: round(certificationScore),
       complexityFitScore: round(complexityFitScore),
+      trustScore: round(trustScore),
       totalScore: 0,
     };
 
@@ -94,7 +106,8 @@ export function rankQuotes(
       breakdown.leadTimeScore * weights.leadTime +
       breakdown.qualityScore * weights.quality +
       breakdown.certificationScore * weights.certification +
-      breakdown.complexityFitScore * weights.complexityFit,
+      breakdown.complexityFitScore * weights.complexityFit +
+      breakdown.trustScore * weights.trust,
     );
 
     quote.score = breakdown.totalScore;
