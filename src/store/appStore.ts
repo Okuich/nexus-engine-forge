@@ -138,6 +138,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setUploadProgress: (p) => set({ uploadProgress: p }),
   analysisResult: null,
   setAnalysisResult: (r) => set({ analysisResult: r }),
+  extractedFeatures: null,
+  setExtractedFeatures: (f) => set({ extractedFeatures: f }),
 
   runDemoAnalysis: () => {
     set({ demoPhase: 'analyzing', uploadProgress: 100 });
