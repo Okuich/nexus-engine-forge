@@ -205,6 +205,106 @@ export type Database = {
           },
         ]
       }
+      model_benchmarks: {
+        Row: {
+          accuracy: number | null
+          created_at: string
+          dataset_name: string
+          f1_score: number | null
+          gpu_memory_mb: number | null
+          id: string
+          job_id: string | null
+          latency_mean_ms: number
+          latency_p50_ms: number | null
+          latency_p95_ms: number | null
+          latency_p99_ms: number | null
+          mae: number
+          mape: number | null
+          metadata: Json | null
+          model_type: string
+          model_version_id: string | null
+          mse: number | null
+          rmse: number | null
+          sample_count: number
+          tenant_id: string | null
+          throughput_rps: number | null
+          train_loss: number | null
+          val_loss: number | null
+        }
+        Insert: {
+          accuracy?: number | null
+          created_at?: string
+          dataset_name: string
+          f1_score?: number | null
+          gpu_memory_mb?: number | null
+          id?: string
+          job_id?: string | null
+          latency_mean_ms: number
+          latency_p50_ms?: number | null
+          latency_p95_ms?: number | null
+          latency_p99_ms?: number | null
+          mae: number
+          mape?: number | null
+          metadata?: Json | null
+          model_type?: string
+          model_version_id?: string | null
+          mse?: number | null
+          rmse?: number | null
+          sample_count?: number
+          tenant_id?: string | null
+          throughput_rps?: number | null
+          train_loss?: number | null
+          val_loss?: number | null
+        }
+        Update: {
+          accuracy?: number | null
+          created_at?: string
+          dataset_name?: string
+          f1_score?: number | null
+          gpu_memory_mb?: number | null
+          id?: string
+          job_id?: string | null
+          latency_mean_ms?: number
+          latency_p50_ms?: number | null
+          latency_p95_ms?: number | null
+          latency_p99_ms?: number | null
+          mae?: number
+          mape?: number | null
+          metadata?: Json | null
+          model_type?: string
+          model_version_id?: string | null
+          mse?: number | null
+          rmse?: number | null
+          sample_count?: number
+          tenant_id?: string | null
+          throughput_rps?: number | null
+          train_loss?: number | null
+          val_loss?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "model_benchmarks_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "training_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "model_benchmarks_model_version_id_fkey"
+            columns: ["model_version_id"]
+            isOneToOne: false
+            referencedRelation: "model_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "model_benchmarks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_versions: {
         Row: {
           artifact_path: string | null
