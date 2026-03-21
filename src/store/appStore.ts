@@ -82,6 +82,10 @@ interface AppState {
   runDemoAnalysis: () => void;
   runOptimize: () => void;
 
+  // Optimization results
+  optimizationResult: OptimizationResult | null;
+  setOptimizationResult: (r: OptimizationResult | null) => void;
+
   // Geometry features
   extractedFeatures: GeometryFeatureSet | null;
   setExtractedFeatures: (f: GeometryFeatureSet | null) => void;
