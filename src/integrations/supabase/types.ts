@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          resource_id: string | null
+          resource_type: string
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_versions: {
         Row: {
           artifact_path: string | null
@@ -23,6 +67,7 @@ export type Database = {
           job_id: string
           metrics: Json | null
           model_type: string
+          tenant_id: string | null
           version: string
         }
         Insert: {
@@ -33,6 +78,7 @@ export type Database = {
           job_id: string
           metrics?: Json | null
           model_type: string
+          tenant_id?: string | null
           version: string
         }
         Update: {
@@ -43,6 +89,7 @@ export type Database = {
           job_id?: string
           metrics?: Json | null
           model_type?: string
+          tenant_id?: string | null
           version?: string
         }
         Relationships: [
@@ -53,7 +100,103 @@ export type Database = {
             referencedRelation: "training_jobs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "model_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tenant_members: {
+        Row: {
+          id: string
+          invited_at: string
+          joined_at: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          invited_at?: string
+          joined_at?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          invited_at?: string
+          joined_at?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_members_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenants: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          settings: Json | null
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          settings?: Json | null
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          settings?: Json | null
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       training_jobs: {
         Row: {
@@ -71,6 +214,7 @@ export type Database = {
           progress: number
           started_at: string | null
           status: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -88,6 +232,7 @@ export type Database = {
           progress?: number
           started_at?: string | null
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -105,9 +250,18 @@ export type Database = {
           progress?: number
           started_at?: string | null
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "training_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       training_metrics: {
         Row: {
@@ -118,6 +272,7 @@ export type Database = {
           job_id: string
           learning_rate: number | null
           recorded_at: string
+          tenant_id: string | null
           train_loss: number | null
           val_loss: number | null
         }
@@ -129,6 +284,7 @@ export type Database = {
           job_id: string
           learning_rate?: number | null
           recorded_at?: string
+          tenant_id?: string | null
           train_loss?: number | null
           val_loss?: number | null
         }
@@ -140,6 +296,7 @@ export type Database = {
           job_id?: string
           learning_rate?: number | null
           recorded_at?: string
+          tenant_id?: string | null
           train_loss?: number | null
           val_loss?: number | null
         }
@@ -151,17 +308,61 @@ export type Database = {
             referencedRelation: "training_jobs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "training_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_tenant_ids: { Args: { _user_id: string }; Returns: string[] }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      has_tenant_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _tenant_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_tenant_member: {
+        Args: { _tenant_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "owner" | "admin" | "member" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -288,6 +489,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["owner", "admin", "member", "viewer"],
+    },
   },
 } as const
