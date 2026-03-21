@@ -101,7 +101,352 @@ function validateToolArgs(tool: string, args: Record<string, unknown>): Validati
   return errors;
 }
 
-// ─── Tool Execution Engine ───────────────────────────────────────
+// ─── Agent Base Class ────────────────────────────────────────────
+
+interface AgentOutput {
+  agent: AgentType;
+  tool: string;
+  success: boolean;
+  data: Record<string, unknown>;
+  metadata: { duration_ms: number; warnings: string[] };
+}
+
+abstract class BaseAgent {
+  abstract readonly type: AgentType;
+  abstract readonly tools: string[];
+
+  canHandle(tool: string): boolean {
+    return this.tools.includes(tool);
+  }
+
+  async execute(tool: string, input: Record<string, unknown>): Promise<AgentOutput> {
+    const start = Date.now();
+    const warnings: string[] = [];
+    try {
+      const data = this.runTool(tool, input, warnings);
+      return { agent: this.type, tool, success: true, data, metadata: { duration_ms: Date.now() - start, warnings } };
+    } catch (e) {
+      return { agent: this.type, tool, success: false, data: { error: (e as Error).message }, metadata: { duration_ms: Date.now() - start, warnings } };
+    }
+  }
+
+  protected abstract runTool(tool: string, input: Record<string, unknown>, warnings: string[]): Record<string, unknown>;
+}
+
+// ─── Geometry Agent ──────────────────────────────────────────────
+
+class GeometryAgent extends BaseAgent {
+  readonly type: AgentType = "geometry";
+  readonly tools = ["analyze_faces", "analyze_edges", "detect_holes", "measure_thickness", "check_draft_angles", "build_topology_graph"];
+
+  protected runTool(tool: string, input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+    switch (tool) {
+      case "analyze_faces":
+        return { total_faces: 47, breakdown: { planar: 28, cylindrical: 12, conical: 3, toroidal: 2, bspline: 2 }, total_area_mm2: 18432.7, complex_face_ratio: 4 / 47 };
+      case "analyze_edges":
+        return { total_edges: 112, breakdown: { line: 68, arc: 32, spline: 12 }, total_length_mm: 4821.3 };
+      case "detect_holes": {
+        const minD = (input.min_diameter as number) ?? 0.5;
+        const holes = [
+          { id: 1, diameter: 8.0, depth: 15.0, type: "through", ld_ratio: 1.875 },
+          { id: 2, diameter: 5.0, depth: 8.0, type: "blind", ld_ratio: 1.6 },
+          { id: 3, diameter: 3.2, depth: 25.0, type: "through", ld_ratio: 7.8 },
+        ].filter(h => h.diameter >= minD);
+        if (holes.some(h => h.ld_ratio > 6)) warnings.push("Hole #3: L/D ratio 7.8 exceeds recommended 6.0 — requires special tooling");
+        return { total_holes: holes.length, holes, min_diameter_filter: minD };
+      }
+      case "measure_thickness": {
+        const result = { min_thickness_mm: 1.2, max_thickness_mm: 14.8, avg_thickness_mm: 4.3, uniformity_score: 62, thin_regions: [{ location: [12.5, -3.2, 45.0], thickness: 1.2 }] };
+        if (result.min_thickness_mm < 1.5) warnings.push(`Min thickness ${result.min_thickness_mm}mm below 1.5mm threshold for Ti-6Al-4V`);
+        return result;
+      }
+      case "check_draft_angles": {
+        const pull = (input.pull_direction as string) || "z";
+        const failing = [{ face_id: 12, angle: 1.2, required: 3.0 }, { face_id: 23, angle: 0.8, required: 3.0 }, { face_id: 31, angle: 2.1, required: 3.0 }];
+        if (failing.length > 0) warnings.push(`${failing.length} faces below required draft angle`);
+        return { faces_checked: 47, passing: 44, failing: failing.length, pull_direction: pull, details: failing };
+      }
+      case "build_topology_graph":
+        return { nodes: 47, edges: 112, connected_components: 1, max_degree: 8, avg_degree: 4.8, is_manifold: true };
+      default:
+        throw new Error(`GeometryAgent: unknown tool ${tool}`);
+    }
+  }
+}
+
+// ─── Cost Agent ──────────────────────────────────────────────────
+
+class CostAgent extends BaseAgent {
+  readonly type: AgentType = "cost";
+  readonly tools = ["estimate_material_cost", "estimate_machining_time", "estimate_total_cost", "quantity_price_breaks"];
+
+  private static readonly PRICES: Record<string, number> = { "Ti-6Al-4V": 180, "Inconel 718": 95, "Al 7075-T6": 12, "SS 316L": 8 };
+  private static readonly DENSITIES: Record<string, number> = { "Ti-6Al-4V": 4.43, "Inconel 718": 8.19, "Al 7075-T6": 2.81, "SS 316L": 7.99 };
+  private static readonly MACHINE_RATE = 150;
+
+  protected runTool(tool: string, input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+    switch (tool) {
+      case "estimate_material_cost": {
+        const mat = (input.material as string) || "Ti-6Al-4V";
+        const vol = (input.volume_cm3 as number) || 120;
+        const d = CostAgent.DENSITIES[mat] || 4.43;
+        const p = CostAgent.PRICES[mat] || 50;
+        const massKg = (vol * d) / 1000;
+        const btf = 3.2;
+        const cost = +(massKg * btf * p).toFixed(2);
+        if (btf > 3) warnings.push(`Buy-to-fly ratio ${btf} is high — consider near-net-shape processes`);
+        return { material: mat, volume_cm3: vol, mass_kg: +massKg.toFixed(2), buy_to_fly_ratio: btf, material_cost_usd: cost };
+      }
+      case "estimate_machining_time": {
+        const f = (input.face_count as number) || 47;
+        const h = (input.hole_count as number) || 12;
+        const c = (input.complexity_score as number) || 65;
+        const total = (2.0 + f * 0.05 + h * 0.15) * (1 + (c / 100) * 0.8);
+        return {
+          roughing_hours: +(total * 0.4).toFixed(2),
+          finishing_hours: +(total * 0.45).toFixed(2),
+          setup_hours: +(total * 0.15).toFixed(2),
+          total_hours: +total.toFixed(2),
+          machine_rate_usd_hr: CostAgent.MACHINE_RATE,
+          machining_cost_usd: +(total * CostAgent.MACHINE_RATE).toFixed(2),
+        };
+      }
+      case "estimate_total_cost": {
+        const mc = (input.material_cost as number) || 0;
+        const mh = (input.machining_hours as number) || 0;
+        const q = (input.quantity as number) || 1;
+        const machCost = mh * CostAgent.MACHINE_RATE;
+        const overhead = +(( mc + machCost) * 0.15).toFixed(2);
+        const unit = +(mc + machCost + overhead).toFixed(2);
+        return { material_usd: mc, machining_usd: machCost, overhead_usd: overhead, unit_cost_usd: unit, total_usd: +(unit * q).toFixed(2), quantity: q };
+      }
+      case "quantity_price_breaks": {
+        const uc = (input.unit_cost as number) || 1000;
+        const qs = (input.quantities as number[]) || [1, 10, 50, 100];
+        const discount = (q: number) => q === 1 ? 1 : q < 10 ? 0.92 : q < 50 ? 0.82 : 0.72;
+        return { breaks: qs.map(q => ({ quantity: q, unit_price: +(uc * discount(q)).toFixed(2), total: +(uc * q * discount(q)).toFixed(2), discount_pct: +((1 - discount(q)) * 100).toFixed(0) })) };
+      }
+      default:
+        throw new Error(`CostAgent: unknown tool ${tool}`);
+    }
+  }
+}
+
+// ─── Optimization Agent ──────────────────────────────────────────
+
+class OptimizationAgent extends BaseAgent {
+  readonly type: AgentType = "optimization";
+  readonly tools = ["run_topology_optimization", "suggest_design_changes", "run_parameter_sweep"];
+
+  protected runTool(tool: string, input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+    switch (tool) {
+      case "run_topology_optimization": {
+        const objectives = (input.objectives as string[]) || ["cost", "manufacturability"];
+        return {
+          iterations: 80, convergence_generation: 64, best_fitness: 0.89,
+          objectives_achieved: Object.fromEntries(objectives.map(o => [o, o === "cost" ? 0.91 : 0.87])),
+          weight_reduction_pct: 18.3, cost_reduction_pct: 24.1,
+          changes: [
+            { type: "thickness_increase", region: "Section C-7", from: "1.2mm", to: "2.0mm", impact: "eliminates thin-wall risk" },
+            { type: "hole_simplify", hole_id: 3, description: "Split L/D=7.8 hole into 2 shorter operations", impact: "removes special tooling need" },
+            { type: "draft_correction", face_ids: [12, 23, 31], from: "<2°", to: "3.5°", impact: "improves extraction" },
+          ],
+        };
+      }
+      case "suggest_design_changes": {
+        return {
+          suggestions: [
+            { priority: "high", agent_source: "geometry+simulation", change: "Add reinforcement rib at thin wall region (Section C-7)", impact: "Manufacturability +15pts, stress safety factor +0.3", confidence: 0.92 },
+            { priority: "medium", agent_source: "geometry", change: "Increase draft on faces 12, 23, 31 to ≥3°", impact: "Tooling cost -12%, extraction reliability +95%", confidence: 0.88 },
+            { priority: "low", agent_source: "cost", change: "Simplify B-spline surface #2 to cylindrical approximation", impact: "Finishing time -8%, negligible form change", confidence: 0.75 },
+          ],
+        };
+      }
+      case "run_parameter_sweep": {
+        const params = input.parameters as Record<string, unknown> || {};
+        const resolution = (input.resolution as number) || 10;
+        const paramCount = Object.keys(params).length || 3;
+        return {
+          parameter_count: paramCount, resolution, total_evaluations: Math.pow(resolution, paramCount),
+          optimal_values: { wall_thickness_mm: 2.1, draft_angle_deg: 3.5, fillet_radius_mm: 1.5 },
+          objective: input.objective, objective_value: 0.91,
+          sensitivity: { wall_thickness_mm: 0.82, draft_angle_deg: 0.45, fillet_radius_mm: 0.23 },
+        };
+      }
+      default:
+        throw new Error(`OptimizationAgent: unknown tool ${tool}`);
+    }
+  }
+}
+
+// ─── Simulation Agent ────────────────────────────────────────────
+
+class SimulationAgent extends BaseAgent {
+  readonly type: AgentType = "simulation";
+  readonly tools = ["run_stress_analysis", "run_thermal_analysis", "predict_fatigue_life", "check_manufacturability"];
+
+  protected runTool(tool: string, input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+    switch (tool) {
+      case "run_stress_analysis": {
+        const load = (input.load_newtons as number) || 1000;
+        const maxStress = 342.7 * (load / 1000);
+        const yieldStrength = 880;
+        const sf = +(yieldStrength / maxStress).toFixed(2);
+        if (sf < 1.5) warnings.push(`Safety factor ${sf} below recommended 1.5`);
+        return { max_von_mises_mpa: +maxStress.toFixed(1), yield_strength_mpa: yieldStrength, safety_factor: sf, applied_load_N: load, critical_location: [12.5, -3.2, 45.0], status: sf >= 1.0 ? "PASS" : "FAIL" };
+      }
+      case "run_thermal_analysis": {
+        const temp = (input.temp_celsius as number) || 200;
+        const maxT = temp * 1.24;
+        if (maxT > 300) warnings.push(`Max temperature ${maxT.toFixed(0)}°C approaching material limit`);
+        return { max_temp_c: +maxT.toFixed(1), min_temp_c: 22.1, gradient_c_per_mm: +(temp * 0.009).toFixed(2), hot_spots: [{ location: [12.5, -3.2, 45.0], temp: +maxT.toFixed(1) }], status: maxT < 500 ? "PASS" : "FAIL" };
+      }
+      case "predict_fatigue_life": {
+        const maxStress = (input.max_stress_mpa as number) || 342;
+        const endurance = 510;
+        const cycles = maxStress < endurance ? Infinity : Math.round(1e7 * Math.pow(endurance / maxStress, 8));
+        const sf = +(endurance / maxStress).toFixed(2);
+        return { cycles_to_failure: cycles === Infinity ? "INFINITE" : cycles, endurance_limit_mpa: endurance, stress_ratio: input.stress_ratio ?? 0.1, safety_factor: sf, status: maxStress < endurance ? "INFINITE_LIFE" : "FINITE_LIFE" };
+      }
+      case "check_manufacturability": {
+        const f = (input.face_count as number) || 47;
+        const h = (input.hole_count as number) || 12;
+        const t = (input.min_thickness as number) || 1.2;
+        const cr = (input.complex_face_ratio as number) || 0.085;
+        const wallScore = Math.min(100, Math.max(0, (t - 0.5) * 50));
+        const holeScore = Math.max(0, 100 - h * 2);
+        const complexityScore = Math.max(0, 100 - cr * 400);
+        const overall = Math.round((wallScore * 0.3 + holeScore * 0.25 + 85 * 0.2 + complexityScore * 0.25));
+        const w: string[] = [];
+        if (t < 1.5) w.push(`Thin wall ${t}mm < 1.5mm minimum`);
+        if (h > 10) w.push(`${h} holes increase machining complexity`);
+        if (cr > 0.1) w.push(`${(cr * 100).toFixed(0)}% complex faces add finishing cost`);
+        warnings.push(...w);
+        return { overall_score: overall, sub_scores: { wall_thickness: Math.round(wallScore), hole_accessibility: holeScore, undercuts: 85, surface_complexity: Math.round(complexityScore) }, warnings: w, recommendations: w.map(ww => ww.includes("Thin") ? "Add reinforcement rib" : ww.includes("holes") ? "Consolidate holes where possible" : "Simplify surfaces") };
+      }
+      default:
+        throw new Error(`SimulationAgent: unknown tool ${tool}`);
+    }
+  }
+}
+
+// ─── Workflow Agent ──────────────────────────────────────────────
+
+class WorkflowAgent extends BaseAgent {
+  readonly type: AgentType = "workflow";
+  readonly tools = ["generate_process_plan", "select_fixtures", "estimate_lead_time", "define_quality_checkpoints"];
+
+  protected runTool(tool: string, input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+    switch (tool) {
+      case "generate_process_plan": {
+        const mat = (input.material as string) || "Ti-6Al-4V";
+        const qty = (input.quantity as number) || 1;
+        const ops = [
+          { seq: 1, type: "rough_mill", machine: "5-axis CNC", time_min: 45, description: "Rough mill outer profile" },
+          { seq: 2, type: "drill", machine: "CNC drill", time_min: 20, description: "Drill and ream holes" },
+          { seq: 3, type: "finish_mill", machine: "5-axis CNC", time_min: 35, description: "Finish mill surfaces to spec" },
+          { seq: 4, type: "deburr", machine: "manual", time_min: 15, description: "Deburr all edges" },
+        ];
+        const totalMin = ops.reduce((s, o) => s + o.time_min, 0);
+        return { material: mat, quantity: qty, operations: ops, total_time_min: totalMin, total_time_hours: +(totalMin / 60).toFixed(2) };
+      }
+      case "select_fixtures": {
+        const plan = input.process_plan as Record<string, unknown> || {};
+        const ops = (plan.operations as any[]) || [];
+        return {
+          fixtures: [
+            { operation: 1, type: "3-jaw chuck", clamping_force_kN: 12, notes: "Soft jaws recommended for finished surfaces" },
+            { operation: 2, type: "vice with soft jaws", clamping_force_kN: 8, notes: "Ensure hole alignment with spindle" },
+            { operation: 3, type: "vacuum table", clamping_force_kN: 5, notes: "For thin-wall finishing passes" },
+          ].slice(0, Math.max(ops.length, 2)),
+          total_fixtures: Math.min(3, Math.max(ops.length, 2)),
+        };
+      }
+      case "estimate_lead_time": {
+        const mh = (input.machining_hours as number) || 2;
+        const qty = (input.quantity as number) || 1;
+        const priority = (input.priority as string) || "standard";
+        const mult = priority === "rush" ? 0.6 : priority === "critical" ? 0.4 : 1.0;
+        const prodDays = Math.ceil(mh * qty / 8);
+        const totalDays = Math.ceil((prodDays + 3) * mult);
+        if (priority === "critical") warnings.push("Critical priority adds 25% surcharge");
+        return { production_days: prodDays, queue_days: 3, total_business_days: totalDays, calendar_days: Math.ceil(totalDays * 1.4), priority, includes_inspection: true, rush_surcharge_pct: priority === "rush" ? 15 : priority === "critical" ? 25 : 0 };
+      }
+      case "define_quality_checkpoints": {
+        const tolClass = (input.tolerance_class as string) || "IT7";
+        return {
+          tolerance_class: tolClass,
+          checkpoints: [
+            { after_operation: 1, type: "dimensional", method: "CMM spot-check", measurements: ["OD", "length", "concentricity"], pass_criteria: `within ${tolClass}` },
+            { after_operation: 3, type: "surface_finish", method: "profilometer", spec: "Ra 1.6μm", pass_criteria: "Ra ≤ 1.6μm" },
+            { after_operation: 4, type: "final_inspection", method: "CMM full", spec: tolClass, pass_criteria: "All dimensions within tolerance" },
+          ],
+          total_checkpoints: 3,
+        };
+      }
+      default:
+        throw new Error(`WorkflowAgent: unknown tool ${tool}`);
+    }
+  }
+}
+
+// ─── Document Agent ──────────────────────────────────────────────
+
+class DocumentAgent extends BaseAgent {
+  readonly type: AgentType = "document";
+  readonly tools = ["generate_quote", "generate_inspection_report", "generate_material_cert", "generate_process_sheet"];
+
+  protected runTool(tool: string, input: Record<string, unknown>, _warnings: string[]): Record<string, unknown> {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    switch (tool) {
+      case "generate_quote": {
+        const cb = (input.cost_breakdown as Record<string, number>) || {};
+        const items = [
+          { description: "Material (raw stock)", amount: cb.material ?? cb.material_usd ?? 342 },
+          { description: "CNC Machining", amount: cb.machining ?? cb.machining_usd ?? 1125 },
+          { description: "Overhead & QC", amount: cb.overhead ?? cb.overhead_usd ?? 220 },
+        ];
+        const total = items.reduce((s, i) => s + i.amount, 0);
+        return { quote_number: `Q-${timestamp}`, part_name: input.part_name, line_items: items, subtotal: total, total_usd: total, lead_time_days: input.lead_time_days, quantity: input.quantity ?? 1, validity_days: 30, status: "draft" };
+      }
+      case "generate_inspection_report": {
+        const cps = (input.checkpoints as any[]) || [];
+        return { report_id: `IR-${timestamp}`, part_name: input.part_name, checkpoint_count: cps.length || 3, template_sections: ["header", "dimensions", "surface_finish", "material_cert_ref", "sign_off"], status: "template_ready" };
+      }
+      case "generate_material_cert": {
+        const mat = (input.material as string) || "Ti-6Al-4V";
+        const specs: Record<string, string> = { "Ti-6Al-4V": "AMS 4928", "Inconel 718": "AMS 5662", "Al 7075-T6": "AMS 4045", "SS 316L": "ASTM A240" };
+        return { cert_id: `MC-${timestamp}`, material: mat, specification: specs[mat] || "N/A", properties: { UTS_MPa: 950, yield_MPa: 880, elongation_pct: 14, hardness_HRC: 36, density_g_cm3: 4.43 }, compliance: "AS9100D", status: "issued" };
+      }
+      case "generate_process_sheet": {
+        const plan = input.process_plan as Record<string, unknown> || {};
+        const ops = (plan.operations as any[]) || [];
+        return { sheet_id: `PS-${timestamp}`, part_name: input.part_name, revision: "A", operation_count: ops.length, operations: ops, includes_setup_instructions: true, includes_tool_list: true, status: "generated" };
+      }
+      default:
+        throw new Error(`DocumentAgent: unknown tool ${tool}`);
+    }
+  }
+}
+
+// ─── Agent Registry (singleton instances) ────────────────────────
+
+const AGENTS: BaseAgent[] = [
+  new GeometryAgent(),
+  new CostAgent(),
+  new OptimizationAgent(),
+  new SimulationAgent(),
+  new WorkflowAgent(),
+  new DocumentAgent(),
+];
+
+function getAgentForTool(tool: string): BaseAgent {
+  const agent = AGENTS.find(a => a.canHandle(tool));
+  if (!agent) throw new Error(`No agent registered for tool: ${tool}`);
+  return agent;
+}
+
+// ─── Execution with Cache & Retry ────────────────────────────────
 
 const MAX_RETRIES = 2;
 const CACHEABLE_TOOLS = new Set([
@@ -111,141 +456,55 @@ const CACHEABLE_TOOLS = new Set([
   "estimate_machining_time",
 ]);
 
-function executeTool(name: string, args: Record<string, unknown>): Record<string, unknown> {
-  switch (name) {
-    case "analyze_faces":
-      return { total_faces: 47, breakdown: { planar: 28, cylindrical: 12, conical: 3, toroidal: 2, bspline: 2 }, total_area_mm2: 18432.7 };
-    case "analyze_edges":
-      return { total_edges: 112, breakdown: { line: 68, arc: 32, spline: 12 }, total_length_mm: 4821.3 };
-    case "detect_holes":
-      return { total_holes: 12, holes: [{ id: 1, diameter: 8.0, depth: 15.0, type: "through" }, { id: 2, diameter: 5.0, depth: 8.0, type: "blind" }, { id: 3, diameter: 3.2, depth: 25.0, type: "through" }], warnings: ["Hole #3: L/D ratio 7.8 exceeds recommended 6.0"] };
-    case "measure_thickness":
-      return { min_thickness_mm: 1.2, max_thickness_mm: 14.8, avg_thickness_mm: 4.3, thin_regions: [{ location: [12.5, -3.2, 45.0], thickness: 1.2, warning: "Below 1.5mm min for Ti-6Al-4V" }], uniformity_score: 62 };
-    case "check_draft_angles":
-      return { faces_checked: 47, passing: 44, failing: 3, details: [{ face_id: 12, angle: 1.2, required: 3.0 }, { face_id: 23, angle: 0.8, required: 3.0 }] };
-    case "build_topology_graph":
-      return { nodes: 47, edges: 112, connected_components: 1, max_degree: 8, avg_degree: 4.8 };
-    case "estimate_material_cost": {
-      const m = (args.material as string) || "Ti-6Al-4V";
-      const v = (args.volume_cm3 as number) || 120;
-      const prices: Record<string, number> = { "Ti-6Al-4V": 180, "Inconel 718": 95, "Al 7075-T6": 12, "SS 316L": 8 };
-      const densities: Record<string, number> = { "Ti-6Al-4V": 4.43, "Inconel 718": 8.19, "Al 7075-T6": 2.81, "SS 316L": 7.99 };
-      const d = densities[m] || 4.43; const p = prices[m] || 50;
-      const massKg = (v * d) / 1000; const btf = 3.2;
-      return { material: m, volume_cm3: v, mass_kg: +(massKg).toFixed(2), buy_to_fly_ratio: btf, material_cost_usd: +(massKg * btf * p).toFixed(2) };
-    }
-    case "estimate_machining_time": {
-      const f = (args.face_count as number) || 47; const h = (args.hole_count as number) || 12;
-      const c = (args.complexity_score as number) || 65;
-      const total = (2.0 + f * 0.05 + h * 0.15) * (1 + (c / 100) * 0.8);
-      return { roughing_hours: +(total * 0.4).toFixed(2), finishing_hours: +(total * 0.45).toFixed(2), setup_hours: +(total * 0.15).toFixed(2), total_hours: +total.toFixed(2), machining_cost_usd: +(total * 150).toFixed(2) };
-    }
-    case "estimate_total_cost": {
-      const mc = (args.material_cost as number) || 0; const mh = (args.machining_hours as number) || 0;
-      const q = (args.quantity as number) || 1; const machCost = mh * 150;
-      const overhead = (mc + machCost) * 0.15; const unit = mc + machCost + overhead;
-      return { material: mc, machining: machCost, overhead: +overhead.toFixed(2), unit_cost: +unit.toFixed(2), total: +(unit * q).toFixed(2), quantity: q };
-    }
-    case "quantity_price_breaks": {
-      const uc = (args.unit_cost as number) || 1000; const qs = (args.quantities as number[]) || [1, 10, 50, 100];
-      return { breaks: qs.map(q => ({ quantity: q, unit_price: +(uc * (q === 1 ? 1 : q < 10 ? 0.92 : q < 50 ? 0.82 : 0.72)).toFixed(2), total: +(uc * q * (q === 1 ? 1 : q < 10 ? 0.92 : q < 50 ? 0.82 : 0.72)).toFixed(2) })) };
-    }
-    case "run_topology_optimization":
-      return { iterations: 80, best_score: 0.89, weight_reduction_pct: 18.3, cost_reduction_pct: 24.1, changes: [{ type: "thickness_increase", region: "Section C-7", value: "1.2mm → 2.0mm" }, { type: "hole_simplify", id: 3, description: "Split deep hole into 2 operations" }] };
-    case "suggest_design_changes":
-      return { suggestions: [{ priority: "high", change: "Add reinforcement rib at thin wall region", impact: "Manufacturability +15pts" }, { priority: "medium", change: "Increase draft on 3 faces to 3°", impact: "Reduces tooling cost 12%" }, { priority: "low", change: "Simplify B-spline surface #2 to cylindrical", impact: "Finishing time -8%" }] };
-    case "run_parameter_sweep":
-      return { parameter_count: Object.keys(args.parameters || {}).length, evaluations: 100, optimal: { wall_thickness: 2.1, draft_angle: 3.5, fillet_radius: 1.5 }, objective_value: 0.91 };
-    case "run_stress_analysis":
-      return { max_von_mises_mpa: 342.7, yield_strength_mpa: 880, safety_factor: 2.57, critical_location: [12.5, -3.2, 45.0], status: "PASS" };
-    case "run_thermal_analysis":
-      return { max_temp_c: 248.3, min_temp_c: 22.1, gradient_c_per_mm: 1.8, hot_spots: [{ location: [12.5, -3.2, 45.0], temp: 248.3 }], status: "PASS" };
-    case "predict_fatigue_life":
-      return { cycles_to_failure: 1.2e6, endurance_limit_mpa: 510, safety_factor: 1.49, status: (args.max_stress_mpa as number) < 510 ? "INFINITE_LIFE" : "FINITE_LIFE" };
-    case "check_manufacturability":
-      return { overall_score: 72, sub_scores: { wall_thickness: 58, hole_accessibility: 75, undercuts: 85, surface_complexity: 68 }, warnings: ["Thin wall at inlet (1.2mm < 1.5mm)", "Deep hole L/D=7.8", "3 faces insufficient draft"], recommendations: ["Add rib at C-7", "Split hole #3", "Increase draft to 3°"] };
-    case "generate_process_plan":
-      return { operations: [{ seq: 1, type: "rough_mill", machine: "5-axis CNC", time_min: 45 }, { seq: 2, type: "drill", machine: "CNC drill", time_min: 20 }, { seq: 3, type: "finish_mill", machine: "5-axis CNC", time_min: 35 }, { seq: 4, type: "deburr", machine: "manual", time_min: 15 }], total_time_min: 115 };
-    case "select_fixtures":
-      return { fixtures: [{ operation: 1, type: "3-jaw chuck", clamping_force: "12kN" }, { operation: 2, type: "vice with soft jaws", clamping_force: "8kN" }] };
-    case "estimate_lead_time": {
-      const mh2 = (args.machining_hours as number) || 2; const q2 = (args.quantity as number) || 1;
-      const p2 = (args.priority as string) || "standard";
-      const mult = p2 === "rush" ? 0.6 : p2 === "critical" ? 0.4 : 1.0;
-      const days = Math.ceil((mh2 * q2 / 8 + 3) * mult);
-      return { business_days: days, calendar_days: Math.ceil(days * 1.4), priority: p2, includes_inspection: true };
-    }
-    case "define_quality_checkpoints":
-      return { checkpoints: [{ after_op: 1, type: "dimensional", measurements: ["OD", "length", "concentricity"] }, { after_op: 3, type: "surface_finish", spec: "Ra 1.6μm" }, { final: true, type: "CMM_full", tolerance_class: args.tolerance_class || "IT7" }] };
-    case "generate_quote":
-      return { quote_number: `Q-${Date.now().toString(36).toUpperCase()}`, part_name: args.part_name, line_items: [{ description: "Material", amount: (args.cost_breakdown as any)?.material || 342 }, { description: "Machining", amount: (args.cost_breakdown as any)?.machining || 1125 }, { description: "Overhead", amount: (args.cost_breakdown as any)?.overhead || 220 }], total: (args.cost_breakdown as any)?.total || 1687, lead_time_days: args.lead_time_days, validity_days: 30 };
-    case "generate_inspection_report":
-      return { report_id: `IR-${Date.now().toString(36).toUpperCase()}`, part_name: args.part_name, checkpoint_count: (args.checkpoints as any[])?.length || 3, template_ready: true };
-    case "generate_material_cert":
-      return { cert_id: `MC-${Date.now().toString(36).toUpperCase()}`, material: args.material, spec: "AMS 4928", properties: { UTS: "950 MPa", yield: "880 MPa", elongation: "14%", hardness: "36 HRC" } };
-    case "generate_process_sheet":
-      return { sheet_id: `PS-${Date.now().toString(36).toUpperCase()}`, part_name: args.part_name, operations: ((args.process_plan as any)?.operations || []).length, generated: true };
-    default:
-      return { error: `Unknown tool: ${name}` };
-  }
-}
-
 async function executeWithCacheAndRetry(
-  name: string, args: Record<string, unknown>,
+  tool: string, args: Record<string, unknown>,
   supabaseAdmin: any, tenantId?: string,
-): Promise<{ success: boolean; data: Record<string, unknown>; retries: number; cached: boolean }> {
-  // Check in-memory cache
-  const cacheKey = getCacheKey(name, args);
-  if (CACHEABLE_TOOLS.has(name)) {
+): Promise<{ success: boolean; data: Record<string, unknown>; retries: number; cached: boolean; agent: AgentType; warnings: string[] }> {
+  const cacheKey = getCacheKey(tool, args);
+
+  // In-memory cache check
+  if (CACHEABLE_TOOLS.has(tool)) {
     const cached = memoryCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
-      return { success: true, data: cached.data as Record<string, unknown>, retries: 0, cached: true };
+      return { success: true, data: cached.data as Record<string, unknown>, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
     }
-    // Check DB cache
+    // DB cache check
     if (supabaseAdmin && tenantId) {
       try {
         const { data: memRow } = await supabaseAdmin
-          .from("agent_memory")
-          .select("value, expires_at")
-          .eq("tenant_id", tenantId)
-          .eq("memory_type", "tool_result_cache")
-          .eq("key", cacheKey)
-          .maybeSingle();
+          .from("agent_memory").select("value, expires_at")
+          .eq("tenant_id", tenantId).eq("memory_type", "tool_result_cache").eq("key", cacheKey).maybeSingle();
         if (memRow && (!memRow.expires_at || new Date(memRow.expires_at) > new Date())) {
           memoryCache.set(cacheKey, { data: memRow.value, expires: Date.now() + 300_000 });
-          return { success: true, data: memRow.value as Record<string, unknown>, retries: 0, cached: true };
+          return { success: true, data: memRow.value as Record<string, unknown>, retries: 0, cached: true, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
         }
-      } catch { /* DB cache miss, continue */ }
+      } catch { /* miss */ }
     }
   }
 
-  // Execute with retries
+  // Execute via agent class with retries
+  const agent = getAgentForTool(tool);
   let retries = 0;
   while (retries <= MAX_RETRIES) {
-    try {
-      const result = executeTool(name, args);
-      if (result.error) throw new Error(result.error as string);
-
-      // Store in cache
-      if (CACHEABLE_TOOLS.has(name)) {
+    const output = await agent.execute(tool, args);
+    if (output.success) {
+      if (CACHEABLE_TOOLS.has(tool)) {
         const ttl = 600_000;
-        memoryCache.set(cacheKey, { data: result, expires: Date.now() + ttl });
+        memoryCache.set(cacheKey, { data: output.data, expires: Date.now() + ttl });
         if (supabaseAdmin && tenantId) {
           supabaseAdmin.from("agent_memory").upsert({
             tenant_id: tenantId, memory_type: "tool_result_cache", key: cacheKey,
-            value: result, ttl_seconds: 600, expires_at: new Date(Date.now() + ttl).toISOString(),
+            value: output.data, ttl_seconds: 600, expires_at: new Date(Date.now() + ttl).toISOString(),
           }, { onConflict: "tenant_id,memory_type,key" }).then(() => {});
         }
       }
-
-      return { success: true, data: result, retries, cached: false };
-    } catch (e) {
-      retries++;
-      if (retries > MAX_RETRIES) return { success: false, data: { error: (e as Error).message }, retries, cached: false };
-      await new Promise(r => setTimeout(r, 500 * retries));
+      return { ...output, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings };
     }
+    retries++;
+    if (retries > MAX_RETRIES) return { success: false, data: output.data, retries, cached: false, agent: agent.type, warnings: output.metadata.warnings };
+    await new Promise(r => setTimeout(r, 500 * retries));
   }
-  return { success: false, data: { error: "Max retries exceeded" }, retries: MAX_RETRIES, cached: false };
+  return { success: false, data: { error: "Max retries exceeded" }, retries: MAX_RETRIES, cached: false, agent: AGENT_MAP[tool] || "geometry", warnings: [] };
 }
 
 // ─── Structured Planner ──────────────────────────────────────────
