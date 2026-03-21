@@ -440,6 +440,220 @@ export type Database = {
         }
         Relationships: []
       }
+      rfq_quotes: {
+        Row: {
+          adjustments: Json | null
+          confidence: number
+          created_at: string
+          id: string
+          lead_time_days: number
+          notes: string | null
+          rank: number | null
+          rfq_id: string
+          score: number | null
+          score_breakdown: Json | null
+          status: string
+          supplier_id: string
+          total_price_usd: number
+          unit_price_usd: number
+          updated_at: string
+        }
+        Insert: {
+          adjustments?: Json | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          lead_time_days: number
+          notes?: string | null
+          rank?: number | null
+          rfq_id: string
+          score?: number | null
+          score_breakdown?: Json | null
+          status?: string
+          supplier_id: string
+          total_price_usd: number
+          unit_price_usd: number
+          updated_at?: string
+        }
+        Update: {
+          adjustments?: Json | null
+          confidence?: number
+          created_at?: string
+          id?: string
+          lead_time_days?: number
+          notes?: string | null
+          rank?: number | null
+          rfq_id?: string
+          score?: number | null
+          score_breakdown?: Json | null
+          status?: string
+          supplier_id?: string
+          total_price_usd?: number
+          unit_price_usd?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rfq_quotes_rfq_id_fkey"
+            columns: ["rfq_id"]
+            isOneToOne: false
+            referencedRelation: "rfqs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rfq_quotes_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rfqs: {
+        Row: {
+          complexity_score: number
+          created_at: string
+          created_by: string
+          deadline: string | null
+          description: string | null
+          geometry_stats: Json | null
+          id: string
+          material: string
+          max_lead_time_days: number | null
+          part_name: string
+          process: string
+          quantity: number
+          region: string | null
+          required_certifications: string[]
+          status: string
+          surface_classes: string[]
+          target_cost_usd: number | null
+          tenant_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          complexity_score?: number
+          created_at?: string
+          created_by: string
+          deadline?: string | null
+          description?: string | null
+          geometry_stats?: Json | null
+          id?: string
+          material: string
+          max_lead_time_days?: number | null
+          part_name: string
+          process: string
+          quantity?: number
+          region?: string | null
+          required_certifications?: string[]
+          status?: string
+          surface_classes?: string[]
+          target_cost_usd?: number | null
+          tenant_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          complexity_score?: number
+          created_at?: string
+          created_by?: string
+          deadline?: string | null
+          description?: string | null
+          geometry_stats?: Json | null
+          id?: string
+          material?: string
+          max_lead_time_days?: number | null
+          part_name?: string
+          process?: string
+          quantity?: number
+          region?: string | null
+          required_certifications?: string[]
+          status?: string
+          surface_classes?: string[]
+          target_cost_usd?: number | null
+          tenant_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rfqs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_profiles: {
+        Row: {
+          active: boolean
+          advanced_surfaces: string[]
+          certifications: string[]
+          company_name: string
+          created_at: string
+          id: string
+          lead_time_days: number
+          materials: string[]
+          max_complexity: number
+          min_order_usd: number
+          pricing_multiplier: number
+          processes: string[]
+          quality_rating: number
+          region: string
+          tenant_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          advanced_surfaces?: string[]
+          certifications?: string[]
+          company_name: string
+          created_at?: string
+          id?: string
+          lead_time_days?: number
+          materials?: string[]
+          max_complexity?: number
+          min_order_usd?: number
+          pricing_multiplier?: number
+          processes?: string[]
+          quality_rating?: number
+          region?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          advanced_surfaces?: string[]
+          certifications?: string[]
+          company_name?: string
+          created_at?: string
+          id?: string
+          lead_time_days?: number
+          materials?: string[]
+          max_complexity?: number
+          min_order_usd?: number
+          pricing_multiplier?: number
+          processes?: string[]
+          quality_rating?: number
+          region?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_members: {
         Row: {
           id: string
