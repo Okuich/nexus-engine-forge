@@ -100,6 +100,111 @@ function runInference(graph: GraphInput): InferenceResult {
   };
 }
 
+// ─── Simulated Genetic Optimization ─────────────────────────────
+
+interface OptConfig {
+  population_size?: number;
+  generations?: number;
+  max_time_ms?: number;
+}
+
+interface OptResult {
+  original_score: InferenceResult;
+  optimized_score: InferenceResult;
+  improvement: number;
+  improvement_pct: number;
+  mutations_applied: string[];
+  generations_completed: number;
+  candidates_evaluated: number;
+  runtime_ms: number;
+  best_graph: GraphInput;
+}
+
+function mutateGraph(graph: GraphInput, strategy: string, strength: number): GraphInput {
+  const g: GraphInput = JSON.parse(JSON.stringify(graph));
+  for (const node of g.nodes) {
+    const f = node.features;
+    if (strategy === "thickness" && f.length >= 12) {
+      // Reduce curvature extremes (indices 7-10)
+      const blend = 0.3 + strength * 0.5;
+      if (Math.abs(f[10] ?? 0) > 0.1) {
+        f[7] = (f[7] ?? 0) * (1 - blend);
+        f[8] = (f[8] ?? 0) * (1 - blend);
+        f[9] = (f[7] ?? 0) * (f[8] ?? 0);
+        f[10] = ((f[7] ?? 0) + (f[8] ?? 0)) / 2;
+        f[0] = (f[0] ?? 1) * (1 + strength * 0.05);
+      }
+    } else if (strategy === "simplify" && f.length >= 12) {
+      if (Math.abs(f[10] ?? 0) < 0.05 * (1 + strength)) {
+        const flatten = 0.5 + strength * 0.4;
+        f[7] = (f[7] ?? 0) * (1 - flatten);
+        f[8] = (f[8] ?? 0) * (1 - flatten);
+        f[9] = (f[7] ?? 0) * (f[8] ?? 0);
+        f[10] = ((f[7] ?? 0) + (f[8] ?? 0)) / 2;
+        f[11] = Math.max(1, (f[11] ?? 1) * (1 - strength * 0.3));
+        node.type = "planar";
+      }
+    }
+  }
+  return g;
+}
+
+function runOptimization(
+  graph: GraphInput,
+  material?: string,
+  config?: OptConfig
+): OptResult {
+  const start = performance.now();
+  const popSize = config?.population_size ?? 20;
+  const maxGen = config?.generations ?? 6;
+  const maxTime = config?.max_time_ms ?? 4500;
+  const strategies = ["thickness", "simplify"];
+
+  const g: GraphInput = { ...graph, material: material ?? graph.material };
+  const originalScore = runInference(g);
+  let bestGraph = g;
+  let bestScore = originalScore;
+  let bestFitness = originalScore.manufacturability_score;
+  const allMutations: string[] = [];
+  let evaluated = 1;
+  let genCompleted = 0;
+
+  for (let gen = 0; gen < maxGen; gen++) {
+    if (performance.now() - start > maxTime) break;
+
+    for (let i = 0; i < popSize; i++) {
+      const strategy = strategies[Math.floor(Math.random() * strategies.length)];
+      const strength = 0.2 + Math.random() * 0.7;
+      const candidate = mutateGraph(bestGraph, strategy, strength);
+      const score = runInference(candidate);
+      evaluated++;
+
+      if (score.manufacturability_score > bestFitness) {
+        bestGraph = candidate;
+        bestScore = score;
+        bestFitness = score.manufacturability_score;
+        allMutations.push(`${strategy}@${strength.toFixed(2)}`);
+      }
+    }
+    genCompleted = gen + 1;
+  }
+
+  const runtime = performance.now() - start;
+  const improvement = Math.round((bestFitness - originalScore.manufacturability_score) * 10) / 10;
+
+  return {
+    original_score: originalScore,
+    optimized_score: bestScore,
+    improvement,
+    improvement_pct: Math.round((improvement / Math.max(originalScore.manufacturability_score, 1)) * 1000) / 10,
+    mutations_applied: allMutations,
+    generations_completed: genCompleted,
+    candidates_evaluated: evaluated,
+    runtime_ms: Math.round(runtime * 100) / 100,
+    best_graph: bestGraph,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
