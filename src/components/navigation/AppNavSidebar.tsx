@@ -58,6 +58,7 @@ const businessItems: NavItem[] = [
   { title: 'Marketplace', url: '/marketplace', icon: Store, permissions: ['rfq:view'] },
   { title: 'Prospects', url: '/prospects', icon: Users, permissions: ['crm:view'] },
   { title: 'CRM', url: '/crm', icon: UserCircle, permissions: ['crm:view'] },
+  { title: 'Admin', url: '/admin', icon: ShieldCheck, permissions: ['admin:settings'] },
 ];
 
 interface NavGroupProps {
