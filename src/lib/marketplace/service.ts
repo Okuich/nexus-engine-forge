@@ -277,19 +277,21 @@ export class MarketplaceService {
 
     const totalPrice = req.unitPriceUsd * rfq.quantity;
 
-    const { data, error } = await supabase
-      .from('rfq_quotes')
-      .insert({
+    const insertPayload = {
         rfq_id: req.rfqId,
         supplier_id: supplierId,
         unit_price_usd: req.unitPriceUsd,
         total_price_usd: totalPrice,
         lead_time_days: req.leadTimeDays,
         notes: req.notes ?? null,
-        adjustments: req.adjustments ?? [],
+        adjustments: (req.adjustments ?? []) as unknown as Record<string, unknown>[],
         confidence: req.confidence ?? 0.8,
-        status: 'submitted',
-      } satisfies TablesInsert<'rfq_quotes'>)
+        status: 'submitted' as const,
+      };
+
+    const { data, error } = await (supabase
+      .from('rfq_quotes') as any)
+      .insert(insertPayload)
       .select()
       .single();
 
