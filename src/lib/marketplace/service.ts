@@ -99,9 +99,7 @@ export class MarketplaceService {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Authentication required');
 
-    const { data, error } = await supabase
-      .from('rfqs')
-      .insert({
+    const insertPayload = {
         title: req.title,
         description: req.description ?? null,
         part_name: req.partName,
@@ -114,11 +112,15 @@ export class MarketplaceService {
         max_lead_time_days: req.maxLeadTimeDays ?? null,
         region: req.region ?? null,
         target_cost_usd: req.targetCostUsd ?? null,
-        geometry_stats: req.geometryStats ?? {},
+        geometry_stats: (req.geometryStats ?? {}) as Record<string, unknown>,
         deadline: req.deadline ?? null,
         created_by: user.id,
-        status: 'open',
-      } satisfies TablesInsert<'rfqs'>)
+        status: 'open' as const,
+      };
+
+    const { data, error } = await (supabase
+      .from('rfqs') as any)
+      .insert(insertPayload)
       .select()
       .single();
 
