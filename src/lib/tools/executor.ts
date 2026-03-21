@@ -172,7 +172,7 @@ const refund: ToolHandler<RefundInput, RefundOutput | { error: string }> = async
     return fail('refund', { error: `Invalid refund amount: $${refundAmount}. Order total is $${totalUsd}` }, Math.round(performance.now() - start));
   }
 
-  const refundCalc = calculateRefund(
+  const refundCalc = calculateRefundFees(
     Number(order.unit_price_usd),
     order.quantity,
     isPartial ? refundAmount : undefined,
