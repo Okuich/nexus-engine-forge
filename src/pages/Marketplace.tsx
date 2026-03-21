@@ -48,6 +48,7 @@ export default function Marketplace() {
             {marketplace.error}
           </motion.div>
         )}
+        </div>
       </header>
 
       {/* Tab bar */}
