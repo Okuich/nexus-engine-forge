@@ -12,14 +12,14 @@ export function useAuditLog() {
     metadata?: Record<string, unknown>
   ) => {
     if (!user) return;
-    await supabase.from('audit_logs').insert({
+    await supabase.from('audit_logs').insert([{
       tenant_id: activeTenantId,
       user_id: user.id,
       action,
       resource_type: resourceType,
       resource_id: resourceId ?? null,
-      metadata: metadata ?? {},
-    });
+      metadata: (metadata ?? {}) as any,
+    }]);
   }, [user, activeTenantId]);
 
   return { log };
