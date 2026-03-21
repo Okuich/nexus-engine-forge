@@ -1,14 +1,19 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2 } from 'lucide-react';
+import { evaluateRouteAccess } from '@/lib/auth/authMiddleware';
+import type { AppRole, Permission } from '@/lib/auth/rbac';
+import { Loader2, ShieldAlert } from 'lucide-react';
 
 interface Props {
   children: React.ReactNode;
-  requiredRole?: 'owner' | 'admin' | 'member' | 'viewer';
+  requiredRole?: AppRole;
+  requiredPermissions?: Permission[];
+  requireTenant?: boolean;
 }
 
-export function ProtectedRoute({ children, requiredRole }: Props) {
-  const { user, loading, hasRole, isAdmin } = useAuth();
+export function ProtectedRoute({ children, requiredRole, requiredPermissions, requireTenant }: Props) {
+  const { user, loading, activeRole, activeTenantId } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -20,12 +25,27 @@ export function ProtectedRoute({ children, requiredRole }: Props) {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (requiredRole && !hasRole(requiredRole) && !isAdmin) {
+  const guard = evaluateRouteAccess(
+    { isAuthenticated: !!user, userRole: activeRole, tenantId: activeTenantId },
+    location.pathname,
+    { requiredRole, requiredPermissions, requireTenant },
+  );
+
+  if (!guard.allowed) {
+    if (guard.redirectTo) return <Navigate to={guard.redirectTo} replace />;
+
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-background">
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-3">
+          <ShieldAlert className="w-10 h-10 text-destructive mx-auto" />
           <p className="text-lg font-semibold text-foreground">Access Denied</p>
-          <p className="text-sm text-muted-foreground">You don't have the required permissions.</p>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            {guard.reason === 'insufficient_role'
+              ? 'Your role does not have sufficient privileges for this page.'
+              : guard.reason === 'route_denied'
+              ? 'You don\'t have the required permissions.'
+              : 'You need to be part of an organization to access this page.'}
+          </p>
         </div>
       </div>
     );

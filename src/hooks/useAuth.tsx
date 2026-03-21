@@ -1,10 +1,13 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { startSessionRefreshLoop, stopSessionRefreshLoop } from '@/lib/auth/authService';
+import { createPermissionChecker, type PermissionChecker } from '@/lib/auth/authMiddleware';
+import type { AppRole, Permission } from '@/lib/auth/rbac';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface TenantMembership {
   tenant_id: string;
-  role: 'owner' | 'admin' | 'member' | 'viewer';
+  role: AppRole;
   tenant_name: string;
   tenant_slug: string;
 }
@@ -15,11 +18,16 @@ interface AuthState {
   loading: boolean;
   tenants: TenantMembership[];
   activeTenantId: string | null;
+  activeRole: AppRole | null;
   setActiveTenant: (id: string) => void;
   signOut: () => Promise<void>;
+  // Legacy role checks
   hasRole: (role: string) => boolean;
   isAdmin: boolean;
   isOwner: boolean;
+  // RBAC permission checker
+  permissions: PermissionChecker;
+  can: (permission: Permission) => boolean;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -40,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data) {
       const memberships: TenantMembership[] = data.map((d: any) => ({
         tenant_id: d.tenant_id,
-        role: d.role,
+        role: d.role as AppRole,
         tenant_name: d.tenants?.name ?? '',
         tenant_slug: d.tenants?.slug ?? '',
       }));
@@ -58,9 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         if (session?.user) {
           setTimeout(() => fetchTenants(session.user.id), 0);
+          startSessionRefreshLoop();
         } else {
           setTenants([]);
           setActiveTenantId(null);
+          stopSessionRefreshLoop();
         }
         setLoading(false);
       }
@@ -71,14 +81,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchTenants(session.user.id);
+        startSessionRefreshLoop();
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      stopSessionRefreshLoop();
+    };
   }, [fetchTenants]);
 
   const activeMembership = tenants.find(t => t.tenant_id === activeTenantId);
+  const activeRole: AppRole | null = activeMembership?.role ?? null;
+  const permissions = createPermissionChecker(activeRole);
 
   const value: AuthState = {
     user,
@@ -86,11 +102,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     tenants,
     activeTenantId,
+    activeRole,
     setActiveTenant: setActiveTenantId,
-    signOut: async () => { await supabase.auth.signOut(); },
+    signOut: async () => {
+      stopSessionRefreshLoop();
+      await supabase.auth.signOut();
+    },
     hasRole: (role: string) => activeMembership?.role === role,
-    isAdmin: activeMembership?.role === 'admin' || activeMembership?.role === 'owner',
-    isOwner: activeMembership?.role === 'owner',
+    isAdmin: activeRole === 'admin' || activeRole === 'owner',
+    isOwner: activeRole === 'owner',
+    permissions,
+    can: (permission: Permission) => permissions.can(permission),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
