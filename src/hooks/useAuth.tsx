@@ -37,7 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [tenants, setTenants] = useState<TenantMembership[]>([]);
-  const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
+  const [activeTenantId, setActiveTenantId] = useState<string | null>(
+    () => localStorage.getItem('activeTenantId')
+  );
 
   const fetchTenants = useCallback(async (userId: string) => {
     const { data } = await supabase
@@ -54,7 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
       setTenants(memberships);
       if (memberships.length > 0 && !activeTenantId) {
-        setActiveTenantId(memberships[0].tenant_id);
+        const stored = localStorage.getItem('activeTenantId');
+        const valid = memberships.find(m => m.tenant_id === stored);
+        setActiveTenantId(valid ? stored : memberships[0].tenant_id);
       }
     }
   }, [activeTenantId]);
@@ -103,7 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tenants,
     activeTenantId,
     activeRole,
-    setActiveTenant: setActiveTenantId,
+    setActiveTenant: (id: string) => {
+      localStorage.setItem('activeTenantId', id);
+      setActiveTenantId(id);
+    },
     signOut: async () => {
       stopSessionRefreshLoop();
       await supabase.auth.signOut();
