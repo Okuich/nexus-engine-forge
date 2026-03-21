@@ -137,15 +137,29 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "optimize") {
+      const graph = body.graph;
+      if (!graph?.nodes?.length) {
+        return new Response(
+          JSON.stringify({ error: "graph with nodes[] required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const result = runOptimization(graph, body.material, body.config);
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "health") {
       return new Response(
-        JSON.stringify({ status: "healthy", model: "ManufacturabilityGAT_v2", device: "edge" }),
+        JSON.stringify({ status: "healthy", model: "ManufacturabilityGAT_v2", device: "edge", optimizer: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     return new Response(
-      JSON.stringify({ error: "Invalid action. Use 'predict', 'predict_batch', or 'health'." }),
+      JSON.stringify({ error: "Invalid action. Use 'predict', 'predict_batch', 'optimize', or 'health'." }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
