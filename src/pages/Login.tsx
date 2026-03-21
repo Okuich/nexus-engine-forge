@@ -26,9 +26,9 @@ export default function Login() {
     }
   };
 
-  const handleGoogleSSO = async () => {
+  const handleOAuth = async (provider: 'google' | 'apple') => {
     setLoading(true);
-    const { error } = await lovable.auth.signInWithOAuth('google', {
+    const { error } = await lovable.auth.signInWithOAuth(provider, {
       redirect_uri: window.location.origin,
     });
     setLoading(false);
