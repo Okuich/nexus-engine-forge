@@ -10,6 +10,7 @@ import Login from "./pages/Login.tsx";
 import Signup from "./pages/Signup.tsx";
 import MLDashboard from "./pages/MLDashboard.tsx";
 import MLPipeline from "./pages/MLPipeline.tsx";
+import Prospects from "./pages/Prospects.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
