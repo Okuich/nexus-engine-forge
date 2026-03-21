@@ -107,7 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tenants,
     activeTenantId,
     activeRole,
-    setActiveTenant: setActiveTenantId,
+    setActiveTenant: (id: string) => {
+      localStorage.setItem('activeTenantId', id);
+      setActiveTenantId(id);
+    },
     signOut: async () => {
       stopSessionRefreshLoop();
       await supabase.auth.signOut();
