@@ -1,9 +1,11 @@
-import { Canvas } from '@react-three/fiber';
+import { useRef, useCallback } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Center, Float, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { motion } from 'framer-motion';
-import { Box, Layers, Eye, RotateCcw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Box, Layers, Eye, RotateCcw, ZoomIn, ZoomOut, Maximize2, Download, Cpu } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-
+import { extractFeaturesFromScene, featureSetToDownloadUrl } from '@/lib/geometry/sceneExtractor';
+import * as THREE from 'three';
 function IndustrialModel() {
   const viewMode = useAppStore((s) => s.viewMode);
 
