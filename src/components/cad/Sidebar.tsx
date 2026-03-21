@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Briefcase, FolderOpen, Play, CheckCircle2, Clock, AlertTriangle, ChevronRight, FileBox, FileCode, File } from 'lucide-react';
-import { useAppStore, type Job, type FileItem } from '@/store/appStore';
+import { Briefcase, FolderOpen, Play, CheckCircle2, Clock, AlertTriangle, ChevronRight, FileBox, FileCode, File, History, DollarSign } from 'lucide-react';
+import { useAppStore, type Job, type FileItem, type JobHistoryEntry } from '@/store/appStore';
 
 const statusConfig = {
   running: { icon: Play, dotClass: 'status-dot-online', label: 'Running' },
@@ -19,12 +19,7 @@ const fileIcons = {
 function JobItem({ job }: { job: Job }) {
   const cfg = statusConfig[job.status];
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="group px-3 py-2.5 hover:bg-secondary/50 cursor-pointer rounded-md mx-2 transition-colors"
-    >
+    <motion.div layout initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="group px-3 py-2.5 hover:bg-secondary/50 cursor-pointer rounded-md mx-2 transition-colors">
       <div className="flex items-center gap-2.5">
         <div className={cfg.dotClass} />
         <div className="flex-1 min-w-0">
@@ -35,12 +30,7 @@ function JobItem({ job }: { job: Job }) {
       </div>
       {job.status === 'running' && (
         <div className="mt-2 h-1 rounded-full bg-secondary overflow-hidden">
-          <motion.div
-            className="h-full rounded-full bg-primary"
-            initial={{ width: 0 }}
-            animate={{ width: `${job.progress}%` }}
-            transition={{ duration: 1, ease: 'easeOut' }}
-          />
+          <motion.div className="h-full rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${job.progress}%` }} transition={{ duration: 1, ease: 'easeOut' }} />
         </div>
       )}
     </motion.div>
@@ -50,24 +40,47 @@ function JobItem({ job }: { job: Job }) {
 function FileRow({ file }: { file: FileItem }) {
   const Icon = fileIcons[file.type];
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="group flex items-center gap-2.5 px-3 py-2 hover:bg-secondary/50 cursor-pointer rounded-md mx-2 transition-colors"
-    >
+    <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="group flex items-center gap-2.5 px-3 py-2 hover:bg-secondary/50 cursor-pointer rounded-md mx-2 transition-colors">
       <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-sm text-foreground truncate">{file.name}</p>
-        {file.size && (
-          <p className="text-xs text-muted-foreground font-mono">{file.size}</p>
-        )}
+        {file.size && <p className="text-xs text-muted-foreground font-mono">{file.size}</p>}
+      </div>
+    </motion.div>
+  );
+}
+
+function HistoryItem({ entry }: { entry: JobHistoryEntry }) {
+  const statusColor = entry.status === 'completed' ? 'text-accent' : entry.status === 'partial' ? 'text-primary' : 'text-destructive';
+  return (
+    <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="group px-3 py-2.5 hover:bg-secondary/50 cursor-pointer rounded-md mx-2 transition-colors">
+      <div className="flex items-center gap-2.5">
+        <FileCode className="w-4 h-4 text-muted-foreground shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground truncate">{entry.fileName}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            {entry.status !== 'failed' && (
+              <>
+                <span className="text-xs font-mono text-primary flex items-center gap-0.5">
+                  <DollarSign className="w-3 h-3" />{entry.cost.toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground">|</span>
+                <span className={`text-xs font-mono ${statusColor}`}>{entry.score}/100</span>
+              </>
+            )}
+            {entry.status === 'failed' && <span className="text-xs text-destructive">Failed</span>}
+          </div>
+        </div>
+        <span className="text-[10px] text-muted-foreground font-mono">
+          {entry.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </span>
       </div>
     </motion.div>
   );
 }
 
 export function Sidebar() {
-  const { sidebarTab, setSidebarTab, jobs, files } = useAppStore();
+  const { sidebarTab, setSidebarTab, jobs, files, jobHistory } = useAppStore();
 
   return (
     <div className="w-64 h-full bg-card border-r border-border flex flex-col shrink-0">
@@ -87,10 +100,7 @@ export function Sidebar() {
             <tab.icon className="w-3.5 h-3.5" />
             {tab.label}
             {sidebarTab === tab.key && (
-              <motion.div
-                layoutId="sidebar-tab-indicator"
-                className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full"
-              />
+              <motion.div layoutId="sidebar-tab-indicator" className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
             )}
           </button>
         ))}
@@ -100,28 +110,23 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto py-2">
         <AnimatePresence mode="wait">
           {sidebarTab === 'jobs' ? (
-            <motion.div
-              key="jobs"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="space-y-1"
-            >
-              {jobs.map((job) => (
-                <JobItem key={job.id} job={job} />
-              ))}
+            <motion.div key="jobs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-1">
+              {jobs.map((job) => <JobItem key={job.id} job={job} />)}
+
+              {/* Job History Section */}
+              {jobHistory.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-2 px-4 py-2">
+                    <History className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Previous Jobs</span>
+                  </div>
+                  {jobHistory.map((entry) => <HistoryItem key={entry.id} entry={entry} />)}
+                </div>
+              )}
             </motion.div>
           ) : (
-            <motion.div
-              key="files"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="space-y-1"
-            >
-              {files.map((file) => (
-                <FileRow key={file.id} file={file} />
-              ))}
+            <motion.div key="files" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-1">
+              {files.map((file) => <FileRow key={file.id} file={file} />)}
             </motion.div>
           )}
         </AnimatePresence>
@@ -131,7 +136,7 @@ export function Sidebar() {
       <div className="px-4 py-2.5 border-t border-border">
         <div className="flex items-center gap-2">
           <div className="status-dot-online" />
-          <span className="text-xs text-muted-foreground font-mono">CNC-04 Connected</span>
+          <span className="text-xs text-muted-foreground font-mono">Midwater AI Ready</span>
         </div>
       </div>
     </div>
