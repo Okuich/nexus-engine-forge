@@ -152,6 +152,59 @@ export type Database = {
           },
         ]
       }
+      cost_feedback: {
+        Row: {
+          actual_cost: number
+          complexity_score: number
+          correction_factor: number | null
+          created_at: string
+          estimate_id: string
+          id: string
+          material: string
+          notes: string | null
+          predicted_cost: number
+          process: string
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          actual_cost: number
+          complexity_score?: number
+          correction_factor?: number | null
+          created_at?: string
+          estimate_id: string
+          id?: string
+          material: string
+          notes?: string | null
+          predicted_cost: number
+          process: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          actual_cost?: number
+          complexity_score?: number
+          correction_factor?: number | null
+          created_at?: string
+          estimate_id?: string
+          id?: string
+          material?: string
+          notes?: string | null
+          predicted_cost?: number
+          process?: string
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_feedback_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_versions: {
         Row: {
           artifact_path: string | null
