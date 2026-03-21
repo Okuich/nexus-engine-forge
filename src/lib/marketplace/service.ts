@@ -284,7 +284,7 @@ export class MarketplaceService {
         adjustments: req.adjustments ?? [],
         confidence: req.confidence ?? 0.8,
         status: 'submitted',
-      } as any)
+      } satisfies TablesInsert<'rfq_quotes'>)
       .select()
       .single();
 
