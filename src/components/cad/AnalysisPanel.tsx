@@ -173,11 +173,21 @@ function QuoteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
   const [generating, setGenerating] = useState(false);
 
   const handleGenerate = () => {
+    if (!analysisResult) return;
     setGenerating(true);
     setTimeout(() => {
+      generateQuotePdf({
+        analysis: analysisResult,
+        fileName: uploadedFile?.name || 'Unknown_Part',
+        email,
+        company,
+        quantity: Math.max(1, parseInt(quantity) || 1),
+        totalCost,
+        volumeDiscount,
+      });
       setGenerating(false);
       setSubmitted(true);
-    }, 2000);
+    }, 1200);
   };
 
   const handleClose = () => {
