@@ -9,7 +9,7 @@ const AGENT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/agent-orche
 export interface StreamEvent {
   type: 'planning' | 'plan_ready' | 'validation' | 'step_start' | 'step_complete' | 'step_error'
     | 'cache_hit' | 'parallel_group' | 'memory_store' | 'token' | 'done' | 'error';
-  agent?: AgentType;
+  agent?: AgentType | string;
   tool?: string;
   stepId?: string;
   content?: string;
