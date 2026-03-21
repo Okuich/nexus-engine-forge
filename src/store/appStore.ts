@@ -80,10 +80,13 @@ interface AppState {
   runDemoAnalysis: () => void;
   runOptimize: () => void;
 
+  // Geometry features
+  extractedFeatures: GeometryFeatureSet | null;
+  setExtractedFeatures: (f: GeometryFeatureSet | null) => void;
+
   // Jobs
   jobs: Job[];
   files: FileItem[];
-}
 
 const MOCK_ANALYSIS: AnalysisResult = {
   manufacturability: 72,
