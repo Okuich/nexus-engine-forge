@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as THREE from 'three';
 import type { GeometryFeatureSet } from '@/lib/geometry/featureExtractor';
 import { runOptimization, generateMockGraph } from '@/lib/ml/pipeline';
 import type { OptimizationResult, ImprovementMetrics } from '@/lib/ml/pipeline';
