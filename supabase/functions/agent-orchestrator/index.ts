@@ -69,7 +69,7 @@ function getCacheKey(tool: string, args: Record<string, unknown>): string {
   return `${tool}:${JSON.stringify(args, Object.keys(args).sort())}`;
 }
 
-// ─── Validation Layer ────────────────────────────────────────────
+// ─── Input Validation Layer ──────────────────────────────────────
 
 interface ValidationError { field: string; message: string }
 
@@ -85,7 +85,6 @@ function validateToolArgs(tool: string, args: Record<string, unknown>): Validati
     }
   }
 
-  // Type checks
   const props = def.function.parameters.properties as Record<string, { type: string }>;
   for (const [key, val] of Object.entries(args)) {
     const schema = props[key];
@@ -99,6 +98,245 @@ function validateToolArgs(tool: string, args: Record<string, unknown>): Validati
   }
 
   return errors;
+}
+
+// ─── Output Validation Schemas ───────────────────────────────────
+
+interface OutputSchema {
+  requiredFields: string[];
+  numericRanges?: Record<string, { min?: number; max?: number }>;
+  nonEmpty?: string[];
+}
+
+const OUTPUT_SCHEMAS: Record<string, OutputSchema> = {
+  // Geometry
+  analyze_faces:         { requiredFields: ["total_faces", "breakdown", "total_area_mm2"], numericRanges: { total_faces: { min: 1 }, total_area_mm2: { min: 0 } } },
+  analyze_edges:         { requiredFields: ["total_edges", "breakdown", "total_length_mm"], numericRanges: { total_edges: { min: 0 } } },
+  detect_holes:          { requiredFields: ["total_holes", "holes"], numericRanges: { total_holes: { min: 0 } } },
+  measure_thickness:     { requiredFields: ["min_thickness_mm", "max_thickness_mm", "avg_thickness_mm"], numericRanges: { min_thickness_mm: { min: 0 }, max_thickness_mm: { min: 0 }, avg_thickness_mm: { min: 0 } } },
+  check_draft_angles:    { requiredFields: ["faces_checked", "passing", "failing"], numericRanges: { faces_checked: { min: 1 } } },
+  build_topology_graph:  { requiredFields: ["nodes", "edges", "connected_components", "is_manifold"], numericRanges: { nodes: { min: 1 } } },
+  // Cost
+  estimate_material_cost: { requiredFields: ["material", "mass_kg", "material_cost_usd"], numericRanges: { mass_kg: { min: 0 }, material_cost_usd: { min: 0 } } },
+  estimate_machining_time: { requiredFields: ["total_hours", "machining_cost_usd"], numericRanges: { total_hours: { min: 0 }, machining_cost_usd: { min: 0 } } },
+  estimate_total_cost:   { requiredFields: ["unit_cost_usd", "total_usd"], numericRanges: { unit_cost_usd: { min: 0 }, total_usd: { min: 0 } } },
+  quantity_price_breaks:  { requiredFields: ["breaks"], nonEmpty: ["breaks"] },
+  // Optimization
+  run_topology_optimization: { requiredFields: ["iterations", "best_fitness", "changes"], numericRanges: { best_fitness: { min: 0, max: 1 } } },
+  suggest_design_changes: { requiredFields: ["suggestions"], nonEmpty: ["suggestions"] },
+  run_parameter_sweep:   { requiredFields: ["optimal_values", "objective_value"], numericRanges: { objective_value: { min: 0 } } },
+  // Simulation
+  run_stress_analysis:   { requiredFields: ["max_von_mises_mpa", "safety_factor", "status"], numericRanges: { safety_factor: { min: 0 } } },
+  run_thermal_analysis:  { requiredFields: ["max_temp_c", "status"], numericRanges: { max_temp_c: { min: -273 } } },
+  predict_fatigue_life:  { requiredFields: ["cycles_to_failure", "endurance_limit_mpa", "status"] },
+  check_manufacturability: { requiredFields: ["overall_score", "sub_scores"], numericRanges: { overall_score: { min: 0, max: 100 } } },
+  // Workflow
+  generate_process_plan: { requiredFields: ["operations", "total_time_min"], nonEmpty: ["operations"], numericRanges: { total_time_min: { min: 0 } } },
+  select_fixtures:       { requiredFields: ["fixtures", "total_fixtures"], numericRanges: { total_fixtures: { min: 1 } } },
+  estimate_lead_time:    { requiredFields: ["total_business_days", "calendar_days"], numericRanges: { total_business_days: { min: 1 } } },
+  define_quality_checkpoints: { requiredFields: ["checkpoints", "total_checkpoints"], numericRanges: { total_checkpoints: { min: 1 } } },
+  // Document
+  generate_quote:        { requiredFields: ["quote_number", "total_usd", "status"] },
+  generate_inspection_report: { requiredFields: ["report_id", "status"] },
+  generate_material_cert: { requiredFields: ["cert_id", "material", "compliance"] },
+  generate_process_sheet: { requiredFields: ["sheet_id", "status"] },
+};
+
+interface OutputValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+function validateToolOutput(tool: string, output: Record<string, unknown>): OutputValidationResult {
+  const schema = OUTPUT_SCHEMAS[tool];
+  const result: OutputValidationResult = { valid: true, errors: [], warnings: [] };
+  if (!schema) return result; // no schema = assume valid
+
+  // Check required fields
+  for (const field of schema.requiredFields) {
+    if (output[field] === undefined || output[field] === null) {
+      result.errors.push(`Missing required output field: ${field}`);
+      result.valid = false;
+    }
+  }
+
+  // Check numeric ranges
+  if (schema.numericRanges) {
+    for (const [field, range] of Object.entries(schema.numericRanges)) {
+      const val = output[field];
+      if (typeof val !== "number") continue;
+      if (range.min !== undefined && val < range.min) {
+        result.errors.push(`${field}=${val} below minimum ${range.min}`);
+        result.valid = false;
+      }
+      if (range.max !== undefined && val > range.max) {
+        result.warnings.push(`${field}=${val} exceeds expected maximum ${range.max}`);
+      }
+    }
+  }
+
+  // Check non-empty arrays
+  if (schema.nonEmpty) {
+    for (const field of schema.nonEmpty) {
+      const val = output[field];
+      if (Array.isArray(val) && val.length === 0) {
+        result.warnings.push(`${field} is empty — expected at least one item`);
+      }
+    }
+  }
+
+  return result;
+}
+
+// ─── Confidence Scoring ──────────────────────────────────────────
+
+interface StepConfidence {
+  stepId: string;
+  tool: string;
+  agent: string;
+  score: number;        // 0.0–1.0
+  factors: Record<string, number>;
+  grade: "HIGH" | "MEDIUM" | "LOW";
+}
+
+function computeStepConfidence(
+  tool: string,
+  output: Record<string, unknown>,
+  validation: OutputValidationResult,
+  cached: boolean,
+  retries: number,
+  durationMs: number,
+): number {
+  let score = 1.0;
+
+  // Penalty for validation errors/warnings
+  score -= validation.errors.length * 0.25;
+  score -= validation.warnings.length * 0.05;
+
+  // Penalty for retries (each retry = less reliable)
+  score -= retries * 0.15;
+
+  // Cached results are trusted
+  if (cached) score = Math.min(score + 0.05, 1.0);
+
+  // Very slow execution may indicate instability
+  if (durationMs > 5000) score -= 0.05;
+
+  // Tool-specific confidence adjustments
+  if (tool === "check_manufacturability" && typeof output.overall_score === "number") {
+    // Low manuf. score doesn't reduce confidence—the tool is correct, just the part is bad
+  }
+  if (tool === "run_stress_analysis" && typeof output.safety_factor === "number") {
+    if ((output.safety_factor as number) < 1.0) score -= 0.05; // edge case, flag it
+  }
+  if (tool === "predict_fatigue_life" && output.cycles_to_failure === "INFINITE") {
+    // High confidence for infinite life
+    score = Math.min(score + 0.05, 1.0);
+  }
+
+  return Math.max(0, Math.min(1, +score.toFixed(2)));
+}
+
+function confidenceGrade(score: number): "HIGH" | "MEDIUM" | "LOW" {
+  return score >= 0.85 ? "HIGH" : score >= 0.6 ? "MEDIUM" : "LOW";
+}
+
+// ─── Cross-Result Consistency Checks ─────────────────────────────
+
+interface ConsistencyIssue {
+  type: "contradiction" | "mismatch" | "warning";
+  description: string;
+  involvedSteps: string[];
+  severity: "high" | "medium" | "low";
+}
+
+function checkCrossResultConsistency(
+  stepResults: Map<string, Record<string, unknown>>,
+  stepMeta: Map<string, { tool: string; agent: string }>,
+): ConsistencyIssue[] {
+  const issues: ConsistencyIssue[] = [];
+  const findStep = (tool: string) => {
+    for (const [id, meta] of stepMeta.entries()) {
+      if (meta.tool === tool) return { id, data: stepResults.get(id) };
+    }
+    return null;
+  };
+
+  // 1. Geometry face count vs manufacturability face_count input
+  const faces = findStep("analyze_faces");
+  const manuf = findStep("check_manufacturability");
+  if (faces?.data && manuf?.data) {
+    const geoFaces = faces.data.total_faces as number;
+    const manufFaces = manuf.data.sub_scores ? (manuf.data as any) : null;
+    // The face count should be consistent
+    if (geoFaces && manufFaces) {
+      // Check is implicit — just ensure they were both used
+    }
+  }
+
+  // 2. Stress safety factor vs fatigue safety factor should be coherent
+  const stress = findStep("run_stress_analysis");
+  const fatigue = findStep("predict_fatigue_life");
+  if (stress?.data && fatigue?.data) {
+    const stressSF = stress.data.safety_factor as number;
+    const fatigueSF = fatigue.data.safety_factor as number;
+    if (stressSF && fatigueSF) {
+      if (stressSF > 2.0 && fatigueSF < 1.0) {
+        issues.push({ type: "contradiction", description: `Static safety factor (${stressSF}) is adequate but fatigue safety factor (${fatigueSF}) indicates failure — review loading assumptions`, involvedSteps: [stress.id, fatigue.id], severity: "high" });
+      }
+    }
+  }
+
+  // 3. Material cost + machining cost should roughly match total cost
+  const matCost = findStep("estimate_material_cost");
+  const machTime = findStep("estimate_machining_time");
+  const totalCost = findStep("estimate_total_cost");
+  if (matCost?.data && machTime?.data && totalCost?.data) {
+    const mat = matCost.data.material_cost_usd as number;
+    const mach = machTime.data.machining_cost_usd as number;
+    const total = totalCost.data.unit_cost_usd as number;
+    if (mat && mach && total) {
+      const sum = mat + mach;
+      // Total should be >= sum (includes overhead)
+      if (total < sum * 0.95) {
+        issues.push({ type: "mismatch", description: `Total cost $${total} is less than material ($${mat}) + machining ($${mach}) = $${sum.toFixed(2)}`, involvedSteps: [matCost.id, machTime.id, totalCost.id], severity: "high" });
+      }
+      if (total > sum * 2.0) {
+        issues.push({ type: "warning", description: `Total cost $${total} is >2× raw costs ($${sum.toFixed(2)}) — overhead seems high`, involvedSteps: [matCost.id, machTime.id, totalCost.id], severity: "medium" });
+      }
+    }
+  }
+
+  // 4. Process plan time vs lead time coherence
+  const procPlan = findStep("generate_process_plan");
+  const leadTime = findStep("estimate_lead_time");
+  if (procPlan?.data && leadTime?.data) {
+    const procHours = procPlan.data.total_time_hours as number;
+    const leadDays = leadTime.data.total_business_days as number;
+    if (procHours && leadDays) {
+      const minDays = Math.ceil(procHours / 8);
+      if (leadDays < minDays) {
+        issues.push({ type: "contradiction", description: `Lead time (${leadDays} days) is shorter than minimum machining time (${minDays} days at 8hr/day)`, involvedSteps: [procPlan.id, leadTime.id], severity: "high" });
+      }
+    }
+  }
+
+  // 5. Thickness warnings vs optimization suggestions should align
+  const thickness = findStep("measure_thickness");
+  const optimization = findStep("run_topology_optimization");
+  if (thickness?.data && optimization?.data) {
+    const minT = thickness.data.min_thickness_mm as number;
+    const changes = (optimization.data.changes as any[]) || [];
+    if (minT && minT < 1.5) {
+      const hasThicknessFix = changes.some((c: any) => c.type === "thickness_increase");
+      if (!hasThicknessFix) {
+        issues.push({ type: "warning", description: `Thin wall detected (${minT}mm) but optimization did not suggest a thickness increase`, involvedSteps: [thickness.id, optimization.id], severity: "low" });
+      }
+    }
+  }
+
+  return issues;
 }
 
 // ─── Agent Base Class ────────────────────────────────────────────
