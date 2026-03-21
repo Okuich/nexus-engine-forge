@@ -249,7 +249,7 @@ export class MarketplaceService {
 
     const insertPayload = {
         rfq_id: req.rfqId,
-        supplier_id: req.rfqId,
+        supplier_id: req.supplierId,
         unit_price_usd: req.unitPriceUsd,
         total_price_usd: totalPrice,
         lead_time_days: req.leadTimeDays,
