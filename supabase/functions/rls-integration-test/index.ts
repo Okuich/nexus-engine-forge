@@ -287,11 +287,17 @@ serve(async (req) => {
           .from("rfq_quotes")
           .delete()
           .eq("id", quote.id);
+        // Verify the quote still exists
+        const { data: quoteStillExists } = await clientB
+          .from("rfq_quotes")
+          .select("id")
+          .eq("id", quote.id)
+          .maybeSingle();
 
         results.push({
-          name: "DELETE is blocked on rfq_quotes (no DELETE policy)",
-          passed: !!deleteQuoteErr,
-          detail: deleteQuoteErr?.message ?? "ERROR: delete succeeded when it should fail",
+          name: "DELETE on rfq_quotes is a no-op (no DELETE policy, RLS filters all rows)",
+          passed: !!quoteStillExists,
+          detail: quoteStillExists ? "Quote still exists after delete attempt — RLS protected it" : "ERROR: Quote was actually deleted",
         });
       }
     }
