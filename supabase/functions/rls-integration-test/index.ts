@@ -171,11 +171,14 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════
     if (rfqId) {
       const { error: deleteErr } = await clientA.from("rfqs").delete().eq("id", rfqId);
+      // With no DELETE policy, RLS silently filters all rows — delete "succeeds" but affects 0 rows
+      // Verify the row still exists
+      const { data: stillExists } = await clientA.from("rfqs").select("id").eq("id", rfqId).maybeSingle();
 
       results.push({
-        name: "DELETE is blocked on rfqs (no DELETE policy)",
-        passed: !!deleteErr,
-        detail: deleteErr?.message ?? "ERROR: delete succeeded when it should fail",
+        name: "DELETE on rfqs is a no-op (no DELETE policy, RLS filters all rows)",
+        passed: !!stillExists,
+        detail: stillExists ? "Row still exists after delete attempt — RLS protected it" : "ERROR: Row was actually deleted",
       });
     }
 
