@@ -275,45 +275,44 @@ export function extractGeometryFeatures(geometry: THREE.BufferGeometry): Geometr
     });
   }
 
-  // ── Adjacency ──────────────────────────────────────
-  const { vertexToFaces, edgeToFaces } = buildAdjacency(index, numTris);
+  // ── Graph construction (optimized topology traversal) ──
+  const faceNormals: Array<[number, number, number]> = faces.map((f) => f.normal);
+  const graph = buildFaceAdjacency(index, positions, faceNormals);
 
-  // ── Curvature estimation ───────────────────────────
-  estimateCurvatures(faces, edgeToFaces, positions, index);
+  // ── Curvature estimation from graph adjacency ──────
+  for (const face of faces) {
+    const nbrs = graph.neighbors.get(face.id);
+    if (!nbrs || nbrs.length === 0) {
+      face.surfaceClass = "planar";
+      continue;
+    }
+    const angles: number[] = [];
+    for (const adj of graph.adjacency) {
+      if (adj.faceA === face.id || adj.faceB === face.id) {
+        angles.push(adj.dihedralAngle);
+      }
+    }
+    if (angles.length === 0) { face.surfaceClass = "planar"; continue; }
 
-  // ── Edge features ──────────────────────────────────
-  const edges: EdgeFeatures[] = [];
-  const edgeIndexSrc: number[] = [];
-  const edgeIndexDst: number[] = [];
-  let edgeId = 0;
-
-  for (const [key, faceIds] of edgeToFaces) {
-    if (faceIds.length !== 2) continue;
-    const [fa, fb] = faceIds;
-    const [aStr, bStr] = key.split("_");
-    const vi = parseInt(aStr), vj = parseInt(bStr);
-
-    const ax = positions[vi * 3], ay = positions[vi * 3 + 1], az = positions[vi * 3 + 2];
-    const bx = positions[vj * 3], by = positions[vj * 3 + 1], bz = positions[vj * 3 + 2];
-    const length = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2);
-
-    const na = faces[fa].normal, nb = faces[fb].normal;
-    const dot = na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2];
-    const dihedralAngle = Math.acos(Math.max(-1, Math.min(1, dot)));
-
-    // Concavity: cross product of normals dotted with edge direction
-    const cx = na[1] * nb[2] - na[2] * nb[1];
-    const cy = na[2] * nb[0] - na[0] * nb[2];
-    const cz = na[0] * nb[1] - na[1] * nb[0];
-    const edgeDirX = bx - ax, edgeDirY = by - ay, edgeDirZ = bz - az;
-    const isConcave = (cx * edgeDirX + cy * edgeDirY + cz * edgeDirZ) < 0;
-
-    edges.push({ id: edgeId, faceA: fa, faceB: fb, dihedralAngle, isConcave, length });
-    // Undirected: add both directions for GNN
-    edgeIndexSrc.push(fa, fb);
-    edgeIndexDst.push(fb, fa);
-    edgeId++;
+    const mean = angles.reduce((s, a) => s + a, 0) / angles.length;
+    const max = Math.max(...angles);
+    const min = Math.min(...angles);
+    face.curvatureMean = mean;
+    face.curvatureGaussian = min * max * (mean > 0.1 ? 1 : 0);
+    face.curvatureMin = min;
+    face.curvatureMax = max;
+    face.surfaceClass = classifySurface(min, max);
   }
+
+  // ── Map graph adjacency → EdgeFeatures ─────────────
+  const edges: EdgeFeatures[] = graph.adjacency.map((a) => ({
+    id: a.id,
+    faceA: a.faceA,
+    faceB: a.faceB,
+    dihedralAngle: a.dihedralAngle,
+    isConcave: a.isConcave,
+    length: a.edgeLength,
+  }));
 
   // ── Bounding box ───────────────────────────────────
   geo.computeBoundingBox();
@@ -321,16 +320,10 @@ export function extractGeometryFeatures(geometry: THREE.BufferGeometry): Geometr
   const bbMin: [number, number, number] = [bb.min.x, bb.min.y, bb.min.z];
   const bbMax: [number, number, number] = [bb.max.x, bb.max.y, bb.max.z];
 
-  // Normalize centroids for feature matrix
   const center = [(bb.min.x + bb.max.x) / 2, (bb.min.y + bb.max.y) / 2, (bb.min.z + bb.max.z) / 2];
-  const diag = Math.max(
-    bb.max.x - bb.min.x,
-    bb.max.y - bb.min.y,
-    bb.max.z - bb.min.z,
-    1e-9,
-  );
+  const diag = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z, 1e-9);
 
-  // ── Volume (sum of signed tetrahedra) ──────────────
+  // ── Volume (signed tetrahedra sum) ─────────────────
   let volume = 0;
   for (let f = 0; f < numTris; f++) {
     const i0 = index[f * 3], i1 = index[f * 3 + 1], i2 = index[f * 3 + 2];
@@ -361,7 +354,12 @@ export function extractGeometryFeatures(geometry: THREE.BufferGeometry): Geometr
   for (const f of faces) variance += (f.curvatureGaussian - meanGaussian) ** 2;
   variance /= n;
 
+  // ── Connected components ───────────────────────────
+  const components = connectedComponents(graph);
+
   // ── Feature matrix [N x 12] ────────────────────────
+  const totalArea = faces.reduce((s, f) => s + f.area, 0);
+  const meanArea = totalArea / n;
   const featureMatrix: number[][] = faces.map((f) => [
     f.area,
     f.normal[0], f.normal[1], f.normal[2],
@@ -372,16 +370,15 @@ export function extractGeometryFeatures(geometry: THREE.BufferGeometry): Geometr
     f.curvatureMax,
     f.curvatureGaussian,
     f.curvatureMean,
-    f.area / (faces.reduce((s, x) => s + x.area, 0) / n), // area ratio
+    f.area / meanArea,
   ]);
-
-  const totalArea = faces.reduce((s, f) => s + f.area, 0);
 
   geo.dispose();
 
   return {
     faces,
     edges,
+    graph,
     stats: {
       totalFaces: numTris,
       totalEdges: edges.length,
@@ -396,9 +393,11 @@ export function extractGeometryFeatures(geometry: THREE.BufferGeometry): Geometr
         maxAbsCurvature: +maxAbs.toFixed(6),
         variance: +variance.toFixed(8),
       },
+      connectedComponents: components.length,
     },
     featureMatrix,
-    edgeIndex: [edgeIndexSrc, edgeIndexDst],
+    edgeIndex: graph.edgeIndex,
+    edgeAttr: graph.edgeAttr,
   };
 }
 
