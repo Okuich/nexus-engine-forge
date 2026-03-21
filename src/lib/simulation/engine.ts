@@ -235,7 +235,7 @@ function solveAirflow(
   }
 
   const dynamicPressure = 0.5 * rho * V * V;
-  const bbCenter = stats.boundingBox.center;
+  const bbCenterPt = bbCenter(stats.boundingBox);
 
   for (let i = 0; i < faceCount; i++) {
     const face = faces[i];
