@@ -96,6 +96,13 @@ function IndustrialModel() {
   );
 }
 
+/** Captures the scene ref so we can extract geometry from outside the canvas. */
+function SceneCapture({ sceneRef }: { sceneRef: React.MutableRefObject<THREE.Scene | null> }) {
+  const { scene } = useThree();
+  sceneRef.current = scene;
+  return null;
+}
+
 const toolbarButtons = [
   { icon: RotateCcw, label: 'Reset' },
   { icon: ZoomIn, label: 'Zoom In' },
@@ -104,7 +111,23 @@ const toolbarButtons = [
 ];
 
 export function CADViewer() {
-  const { viewMode, setViewMode } = useAppStore();
+  const { viewMode, setViewMode, setExtractedFeatures, extractedFeatures, uploadedFile } = useAppStore();
+  const sceneRef = useRef<THREE.Scene | null>(null);
+
+  const handleExtractFeatures = useCallback(() => {
+    if (!sceneRef.current) return;
+    const features = extractFeaturesFromScene(sceneRef.current);
+    if (features) {
+      setExtractedFeatures(features);
+      // Auto-download JSON
+      const url = featureSetToDownloadUrl(features, uploadedFile?.name || 'model');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(uploadedFile?.name || 'model').replace(/\.\w+$/, '')}_features.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, [setExtractedFeatures, uploadedFile]);
 
   return (
     <div className="flex-1 relative bg-background industrial-grid overflow-hidden">
