@@ -11,6 +11,7 @@
  */
 
 import * as THREE from "three";
+import { buildFaceAdjacency, connectedComponents, type FaceAdjacencyGraph } from "./graphBuilder";
 
 // ─── Types ───────────────────────────────────────────────────────
 
