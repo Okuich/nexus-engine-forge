@@ -1,9 +1,11 @@
-import { Canvas } from '@react-three/fiber';
+import { useRef, useCallback } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Center, Float, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { motion } from 'framer-motion';
-import { Box, Layers, Eye, RotateCcw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Box, Layers, Eye, RotateCcw, ZoomIn, ZoomOut, Maximize2, Download, Cpu } from 'lucide-react';
 import { useAppStore } from '@/store/appStore';
-
+import { extractFeaturesFromScene, featureSetToDownloadUrl } from '@/lib/geometry/sceneExtractor';
+import * as THREE from 'three';
 function IndustrialModel() {
   const viewMode = useAppStore((s) => s.viewMode);
 
@@ -94,6 +96,13 @@ function IndustrialModel() {
   );
 }
 
+/** Captures the scene ref so we can extract geometry from outside the canvas. */
+function SceneCapture({ sceneRef }: { sceneRef: React.MutableRefObject<THREE.Scene | null> }) {
+  const { scene } = useThree();
+  sceneRef.current = scene;
+  return null;
+}
+
 const toolbarButtons = [
   { icon: RotateCcw, label: 'Reset' },
   { icon: ZoomIn, label: 'Zoom In' },
@@ -102,7 +111,23 @@ const toolbarButtons = [
 ];
 
 export function CADViewer() {
-  const { viewMode, setViewMode } = useAppStore();
+  const { viewMode, setViewMode, setExtractedFeatures, extractedFeatures, uploadedFile } = useAppStore();
+  const sceneRef = useRef<THREE.Scene | null>(null);
+
+  const handleExtractFeatures = useCallback(() => {
+    if (!sceneRef.current) return;
+    const features = extractFeaturesFromScene(sceneRef.current);
+    if (features) {
+      setExtractedFeatures(features);
+      // Auto-download JSON
+      const url = featureSetToDownloadUrl(features, uploadedFile?.name || 'model');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(uploadedFile?.name || 'model').replace(/\.\w+$/, '')}_features.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, [setExtractedFeatures, uploadedFile]);
 
   return (
     <div className="flex-1 relative bg-background industrial-grid overflow-hidden">
@@ -122,6 +147,7 @@ export function CADViewer() {
         <pointLight position={[3, -1, 2]} intensity={0.2} color="#10b981" />
 
         <IndustrialModel />
+        <SceneCapture sceneRef={sceneRef} />
 
         <Grid
           position={[0, -1.5, 0]}
@@ -197,19 +223,31 @@ export function CADViewer() {
         ))}
       </motion.div>
 
-      {/* Model info */}
+      {/* Model info + Extract button */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.7 }}
-        className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-4 py-2.5"
+        className="absolute bottom-4 left-4 flex items-end gap-2"
       >
-        <p className="text-xs font-mono text-muted-foreground">
-          Turbine_Housing_v4.step
-        </p>
-        <p className="text-xs font-mono text-primary">
-          Vertices: 24,847 · Faces: 49,692
-        </p>
+        <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg px-4 py-2.5">
+          <p className="text-xs font-mono text-muted-foreground">
+            {uploadedFile?.name || 'Turbine_Housing_v4.step'}
+          </p>
+          <p className="text-xs font-mono text-primary">
+            {extractedFeatures
+              ? `Faces: ${extractedFeatures.stats.totalFaces.toLocaleString()} · Edges: ${extractedFeatures.stats.totalEdges.toLocaleString()} · Vol: ${extractedFeatures.stats.volume.toFixed(1)}`
+              : 'Vertices: 24,847 · Faces: 49,692'}
+          </p>
+        </div>
+        <button
+          onClick={handleExtractFeatures}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+        >
+          <Cpu className="w-3.5 h-3.5" />
+          Extract Features
+          <Download className="w-3 h-3 opacity-60" />
+        </button>
       </motion.div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { GeometryFeatureSet } from '@/lib/geometry/featureExtractor';
 
 export interface Job {
   id: string;
@@ -79,6 +80,10 @@ interface AppState {
   runDemoAnalysis: () => void;
   runOptimize: () => void;
 
+  // Geometry features
+  extractedFeatures: GeometryFeatureSet | null;
+  setExtractedFeatures: (f: GeometryFeatureSet | null) => void;
+
   // Jobs
   jobs: Job[];
   files: FileItem[];
@@ -134,6 +139,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setUploadProgress: (p) => set({ uploadProgress: p }),
   analysisResult: null,
   setAnalysisResult: (r) => set({ analysisResult: r }),
+  extractedFeatures: null,
+  setExtractedFeatures: (f) => set({ extractedFeatures: f }),
 
   runDemoAnalysis: () => {
     set({ demoPhase: 'analyzing', uploadProgress: 100 });
