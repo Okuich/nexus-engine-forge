@@ -96,6 +96,7 @@ export interface ScoreBreakdown {
   qualityScore: number;
   certificationScore: number;
   complexityFitScore: number;
+  trustScore: number;
   /** Weighted total 0-100 */
   totalScore: number;
 }
@@ -106,14 +107,16 @@ export interface RankingWeights {
   quality: number;
   certification: number;
   complexityFit: number;
+  trust: number;
 }
 
 export const DEFAULT_RANKING_WEIGHTS: RankingWeights = {
-  cost: 0.35,
-  leadTime: 0.20,
-  quality: 0.25,
+  cost: 0.30,
+  leadTime: 0.15,
+  quality: 0.20,
   certification: 0.10,
   complexityFit: 0.10,
+  trust: 0.15,
 };
 
 // ─── Matching Result ─────────────────────────────────────────────
