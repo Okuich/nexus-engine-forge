@@ -65,7 +65,6 @@ function AppRoutes() {
         <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         <Route path="/fabrication" element={<ProtectedRoute><Fabrication /></ProtectedRoute>} />
-        <Route path="/pricing" element={<Pricing />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
