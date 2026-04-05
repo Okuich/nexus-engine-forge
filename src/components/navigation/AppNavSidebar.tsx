@@ -113,7 +113,7 @@ function NavGroup({ label, items, collapsed }: NavGroupProps) {
 export function AppNavSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
-  const { user, activeRole, signOut, tenants, activeTenantId, setActiveTenant } = useAuth();
+  const { user, activeRole, signOut, tenants, activeTenantId, setActiveTenant, licensedProducts } = useAuth();
 
   const activeTenant = tenants.find((t) => t.tenant_id === activeTenantId);
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? '??';
