@@ -41,7 +41,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   const location = useLocation();
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
+  const isPublicPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/pricing';
 
   if (isAuthPage) {
     return (
