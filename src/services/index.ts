@@ -32,3 +32,22 @@ export {
   enforceOrgPermission,
 } from './accessControl';
 export type { OrgPermission, AccessContext } from './accessControl';
+
+// Supplier Matcher
+export {
+  matchSuppliers,
+  recordFeedback,
+  getFeedbackAggregates,
+  applyLearnedAdjustments,
+  getWeightAdjustmentHistory,
+  resetFeedback,
+  DEFAULT_MATCH_WEIGHTS,
+} from './supplierMatcher';
+export type {
+  MatchRequest,
+  MatchWeights,
+  ScoredSupplier,
+  MatchOutput,
+  MatchFeedback,
+  FeedbackOutcome,
+} from './supplierMatcher';
