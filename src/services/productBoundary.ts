@@ -1,8 +1,14 @@
 /**
  * Product Boundary Enforcement
  *
- * Defines two products — `midwater` and `fabrication_os` — and maps every
- * route, permission, and sidebar group to exactly one product.
+ * Two products with distinct market positions:
+ *
+ *  • **midwater** — Demand monopoly. Aggregates buyers and procurement.
+ *    Features: Marketplace, RFQs, Suppliers (from buyer POV), CRM, Prospects.
+ *
+ *  • **fabrication_os** — Supply monopoly. Aggregates suppliers and manufacturers.
+ *    Features: CAD workspace, ML/AI pipelines, simulation, engineering tools.
+ *
  * No feature may belong to both products (strict separation).
  *
  * Enforcement layers:
@@ -15,6 +21,30 @@
 
 export const PRODUCTS = ['midwater', 'fabrication_os'] as const;
 export type Product = (typeof PRODUCTS)[number];
+
+export type MarketPosition = 'demand_monopoly' | 'supply_monopoly';
+
+export interface ProductMeta {
+  id: Product;
+  name: string;
+  position: MarketPosition;
+  description: string;
+}
+
+export const PRODUCT_CATALOG: Record<Product, ProductMeta> = {
+  midwater: {
+    id: 'midwater',
+    name: 'Midwater',
+    position: 'demand_monopoly',
+    description: 'Buyer aggregation platform — marketplace, RFQs, procurement, and CRM.',
+  },
+  fabrication_os: {
+    id: 'fabrication_os',
+    name: 'Fabrication OS',
+    position: 'supply_monopoly',
+    description: 'Supplier aggregation platform — CAD, ML pipelines, simulation, and engineering.',
+  },
+};
 
 // ─── Feature → Product Mapping ─────────────────────────────────
 
