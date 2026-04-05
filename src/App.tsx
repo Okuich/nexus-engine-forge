@@ -18,6 +18,7 @@ import CRM from "./pages/CRM.tsx";
 import Marketplace from "./pages/Marketplace.tsx";
 import Admin from "./pages/Admin.tsx";
 import Fabrication from "./pages/Fabrication.tsx";
+import Pricing from "./pages/Pricing.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -40,13 +41,14 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   const location = useLocation();
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
+  const isPublicPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/pricing';
 
-  if (isAuthPage) {
+  if (isPublicPage) {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/pricing" element={<Pricing />} />
       </Routes>
     );
   }
