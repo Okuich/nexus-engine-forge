@@ -51,7 +51,7 @@ export const PRODUCT_CATALOG: Record<Product, ProductMeta> = {
 /** Routes owned by each product (no overlap allowed) */
 export const PRODUCT_ROUTES: Record<Product, readonly string[]> = {
   midwater: ['/marketplace', '/prospects', '/crm'],
-  fabrication_os: ['/', '/ml', '/pipeline', '/ml/evaluation'],
+  fabrication_os: ['/', '/ml', '/pipeline', '/ml/evaluation', '/fabrication'],
 };
 
 /** Admin route is shared — accessible from either product */
