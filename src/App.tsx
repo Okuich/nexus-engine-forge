@@ -43,11 +43,12 @@ function AppRoutes() {
   const location = useLocation();
   const isPublicPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/pricing';
 
-  if (isAuthPage) {
+  if (isPublicPage) {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/pricing" element={<Pricing />} />
       </Routes>
     );
   }
