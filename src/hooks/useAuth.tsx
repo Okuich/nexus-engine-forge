@@ -104,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const activeMembership = tenants.find(t => t.tenant_id === activeTenantId);
   const activeRole: AppRole | null = activeMembership?.role ?? null;
+  const licensedProducts: Product[] = activeMembership?.licensed_products ?? [];
   const permissions = createPermissionChecker(activeRole);
 
   const value: AuthState = {
@@ -125,7 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAdmin: activeRole === 'admin' || activeRole === 'owner',
     isOwner: activeRole === 'owner',
     permissions,
-    can: (permission: Permission) => permissions.can(permission),
+    can: (permission: Permission) =>
+      permissions.can(permission) && canUsePermissionByProduct(licensedProducts, permission),
+    licensedProducts,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
