@@ -1136,6 +1136,7 @@ export type Database = {
           id: string
           invited_at: string
           joined_at: string | null
+          licensed_products: string[]
           role: Database["public"]["Enums"]["app_role"]
           tenant_id: string
           user_id: string
@@ -1144,6 +1145,7 @@ export type Database = {
           id?: string
           invited_at?: string
           joined_at?: string | null
+          licensed_products?: string[]
           role?: Database["public"]["Enums"]["app_role"]
           tenant_id: string
           user_id: string
@@ -1152,6 +1154,7 @@ export type Database = {
           id?: string
           invited_at?: string
           joined_at?: string | null
+          licensed_products?: string[]
           role?: Database["public"]["Enums"]["app_role"]
           tenant_id?: string
           user_id?: string
