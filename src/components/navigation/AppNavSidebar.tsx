@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import type { Permission } from '@/lib/auth/rbac';
 import type { AppRole } from '@/lib/auth/rbac';
 import { isNavGroupVisible } from '@/services/productBoundary';
+import {
   Box,
   Brain,
   Building2,
