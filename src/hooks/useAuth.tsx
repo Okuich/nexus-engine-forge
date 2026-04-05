@@ -58,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: d.role as AppRole,
         tenant_name: d.tenants?.name ?? '',
         tenant_slug: d.tenants?.slug ?? '',
+        licensed_products: (d.licensed_products ?? ['midwater', 'fabrication_os']) as Product[],
       }));
       setTenants(memberships);
       if (memberships.length > 0 && !activeTenantId) {
