@@ -34,6 +34,8 @@ interface AuthState {
   can: (permission: Permission) => boolean;
   // Product boundary
   licensedProducts: Product[];
+  // Organization-level permissions
+  canOrg: (permission: OrgPermission) => boolean;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
