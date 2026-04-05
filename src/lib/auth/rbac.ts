@@ -152,6 +152,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission[]> = {
   '/ml': ['ml:view'],
   '/pipeline': ['ml:train'],
   '/ml/evaluation': ['ml:evaluate'],
+  '/fabrication': ['fab:view'],
   '/marketplace': ['rfq:view'],
   '/prospects': ['crm:view'],
   '/crm': ['crm:view'],
