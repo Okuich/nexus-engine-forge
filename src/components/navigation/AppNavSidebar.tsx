@@ -168,9 +168,15 @@ export function AppNavSidebar() {
           </SidebarGroup>
         )}
 
-        <NavGroup label="Engineering" items={engineeringItems} collapsed={collapsed} />
-        <NavGroup label="ML & AI" items={mlItems} collapsed={collapsed} />
-        <NavGroup label="Business" items={businessItems} collapsed={collapsed} />
+        {isNavGroupVisible(licensedProducts, 'Engineering') && (
+          <NavGroup label="Engineering" items={engineeringItems} collapsed={collapsed} />
+        )}
+        {isNavGroupVisible(licensedProducts, 'ML & AI') && (
+          <NavGroup label="ML & AI" items={mlItems} collapsed={collapsed} />
+        )}
+        {isNavGroupVisible(licensedProducts, 'Business') && (
+          <NavGroup label="Business" items={businessItems} collapsed={collapsed} />
+        )}
       </SidebarContent>
 
       <SidebarFooter className="bg-card border-t border-border">
