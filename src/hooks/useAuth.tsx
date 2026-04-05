@@ -4,12 +4,15 @@ import { startSessionRefreshLoop, stopSessionRefreshLoop } from '@/lib/auth/auth
 import { createPermissionChecker, type PermissionChecker } from '@/lib/auth/authMiddleware';
 import type { AppRole, Permission } from '@/lib/auth/rbac';
 import type { User, Session } from '@supabase/supabase-js';
+import type { Product } from '@/services/productBoundary';
+import { canUsePermissionByProduct } from '@/services/productBoundary';
 
 interface TenantMembership {
   tenant_id: string;
   role: AppRole;
   tenant_name: string;
   tenant_slug: string;
+  licensed_products: Product[];
 }
 
 interface AuthState {
