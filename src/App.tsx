@@ -18,6 +18,7 @@ import CRM from "./pages/CRM.tsx";
 import Marketplace from "./pages/Marketplace.tsx";
 import Admin from "./pages/Admin.tsx";
 import Fabrication from "./pages/Fabrication.tsx";
+import Pricing from "./pages/Pricing.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
