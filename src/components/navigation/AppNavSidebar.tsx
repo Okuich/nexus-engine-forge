@@ -179,6 +179,9 @@ export function AppNavSidebar() {
         {isNavGroupVisible(licensedProducts, 'ML & AI') && (
           <NavGroup label="ML & AI" items={mlItems} collapsed={collapsed} />
         )}
+        {isNavGroupVisible(licensedProducts, 'Fabrication') && (
+          <NavGroup label="Fabrication" items={fabricationItems} collapsed={collapsed} />
+        )}
         {isNavGroupVisible(licensedProducts, 'Business') && (
           <NavGroup label="Business" items={businessItems} collapsed={collapsed} />
         )}
