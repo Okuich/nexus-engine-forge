@@ -31,6 +31,8 @@ interface AuthState {
   // RBAC permission checker
   permissions: PermissionChecker;
   can: (permission: Permission) => boolean;
+  // Product boundary
+  licensedProducts: Product[];
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
