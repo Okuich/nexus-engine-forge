@@ -2,7 +2,8 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { evaluateRouteAccess } from '@/lib/auth/authMiddleware';
 import type { AppRole, Permission } from '@/lib/auth/rbac';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { canAccessRouteByProduct } from '@/services/productBoundary';
+import { Loader2, ShieldAlert, PackageX } from 'lucide-react';
 
 interface Props {
   children: React.ReactNode;
@@ -12,7 +13,7 @@ interface Props {
 }
 
 export function ProtectedRoute({ children, requiredRole, requiredPermissions, requireTenant }: Props) {
-  const { user, loading, activeRole, activeTenantId } = useAuth();
+  const { user, loading, activeRole, activeTenantId, licensedProducts } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -24,6 +25,21 @@ export function ProtectedRoute({ children, requiredRole, requiredPermissions, re
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  // Product boundary check
+  if (!canAccessRouteByProduct(licensedProducts, location.pathname)) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <PackageX className="w-10 h-10 text-destructive mx-auto" />
+          <p className="text-lg font-semibold text-foreground">Product Not Licensed</p>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            This feature is not included in your current product license. Contact your administrator to upgrade.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const guard = evaluateRouteAccess(
     { isAuthenticated: !!user, userRole: activeRole, tenantId: activeTenantId },

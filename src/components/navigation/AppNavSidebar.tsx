@@ -15,7 +15,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import type { Permission } from '@/lib/auth/rbac';
 import type { AppRole } from '@/lib/auth/rbac';
-import {
+import { isNavGroupVisible } from '@/services/productBoundary';
   Box,
   Brain,
   Building2,
