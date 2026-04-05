@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchTenants = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('tenant_members')
-      .select('tenant_id, role, tenants:tenant_id(name, slug)')
+      .select('tenant_id, role, licensed_products, tenants:tenant_id(name, slug)')
       .eq('user_id', userId);
 
     if (data) {
