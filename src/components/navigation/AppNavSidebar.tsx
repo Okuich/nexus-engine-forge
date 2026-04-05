@@ -60,6 +60,10 @@ const mlItems: NavItem[] = [
   { title: 'Evaluation', url: '/ml/evaluation', icon: FlaskConical, permissions: ['ml:evaluate'] },
 ];
 
+const fabricationItems: NavItem[] = [
+  { title: 'Fabrication', url: '/fabrication', icon: Factory, permissions: ['fab:view'] },
+];
+
 const businessItems: NavItem[] = [
   { title: 'Marketplace', url: '/marketplace', icon: Store, permissions: ['rfq:view'] },
   { title: 'Prospects', url: '/prospects', icon: Users, permissions: ['crm:view'] },
