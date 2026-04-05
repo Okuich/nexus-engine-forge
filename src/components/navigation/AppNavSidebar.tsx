@@ -15,6 +15,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import type { Permission } from '@/lib/auth/rbac';
 import type { AppRole } from '@/lib/auth/rbac';
+import { isNavGroupVisible } from '@/services/productBoundary';
 import {
   Box,
   Brain,
@@ -112,7 +113,7 @@ function NavGroup({ label, items, collapsed }: NavGroupProps) {
 export function AppNavSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
-  const { user, activeRole, signOut, tenants, activeTenantId, setActiveTenant } = useAuth();
+  const { user, activeRole, signOut, tenants, activeTenantId, setActiveTenant, licensedProducts } = useAuth();
 
   const activeTenant = tenants.find((t) => t.tenant_id === activeTenantId);
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? '??';
@@ -167,9 +168,15 @@ export function AppNavSidebar() {
           </SidebarGroup>
         )}
 
-        <NavGroup label="Engineering" items={engineeringItems} collapsed={collapsed} />
-        <NavGroup label="ML & AI" items={mlItems} collapsed={collapsed} />
-        <NavGroup label="Business" items={businessItems} collapsed={collapsed} />
+        {isNavGroupVisible(licensedProducts, 'Engineering') && (
+          <NavGroup label="Engineering" items={engineeringItems} collapsed={collapsed} />
+        )}
+        {isNavGroupVisible(licensedProducts, 'ML & AI') && (
+          <NavGroup label="ML & AI" items={mlItems} collapsed={collapsed} />
+        )}
+        {isNavGroupVisible(licensedProducts, 'Business') && (
+          <NavGroup label="Business" items={businessItems} collapsed={collapsed} />
+        )}
       </SidebarContent>
 
       <SidebarFooter className="bg-card border-t border-border">

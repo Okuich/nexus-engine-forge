@@ -4,12 +4,15 @@ import { startSessionRefreshLoop, stopSessionRefreshLoop } from '@/lib/auth/auth
 import { createPermissionChecker, type PermissionChecker } from '@/lib/auth/authMiddleware';
 import type { AppRole, Permission } from '@/lib/auth/rbac';
 import type { User, Session } from '@supabase/supabase-js';
+import type { Product } from '@/services/productBoundary';
+import { canUsePermissionByProduct } from '@/services/productBoundary';
 
 interface TenantMembership {
   tenant_id: string;
   role: AppRole;
   tenant_name: string;
   tenant_slug: string;
+  licensed_products: Product[];
 }
 
 interface AuthState {
@@ -28,6 +31,8 @@ interface AuthState {
   // RBAC permission checker
   permissions: PermissionChecker;
   can: (permission: Permission) => boolean;
+  // Product boundary
+  licensedProducts: Product[];
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -44,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchTenants = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('tenant_members')
-      .select('tenant_id, role, tenants:tenant_id(name, slug)')
+      .select('tenant_id, role, licensed_products, tenants:tenant_id(name, slug)')
       .eq('user_id', userId);
 
     if (data) {
@@ -53,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: d.role as AppRole,
         tenant_name: d.tenants?.name ?? '',
         tenant_slug: d.tenants?.slug ?? '',
+        licensed_products: (d.licensed_products ?? ['midwater', 'fabrication_os']) as Product[],
       }));
       setTenants(memberships);
       if (memberships.length > 0 && !activeTenantId) {
@@ -98,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const activeMembership = tenants.find(t => t.tenant_id === activeTenantId);
   const activeRole: AppRole | null = activeMembership?.role ?? null;
+  const licensedProducts: Product[] = activeMembership?.licensed_products ?? [];
   const permissions = createPermissionChecker(activeRole);
 
   const value: AuthState = {
@@ -119,7 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAdmin: activeRole === 'admin' || activeRole === 'owner',
     isOwner: activeRole === 'owner',
     permissions,
-    can: (permission: Permission) => permissions.can(permission),
+    can: (permission: Permission) =>
+      permissions.can(permission) && canUsePermissionByProduct(licensedProducts, permission),
+    licensedProducts,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
