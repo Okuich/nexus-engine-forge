@@ -107,7 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const activeMembership = tenants.find(t => t.tenant_id === activeTenantId);
   const activeRole: AppRole | null = activeMembership?.role ?? null;
-  const licensedProducts: Product[] = activeMembership?.licensed_products ?? [];
+  const licensedProducts: Product[] = resolveEffectiveProducts({
+    role: activeRole,
+    licensedProducts: activeMembership?.licensed_products ?? [],
+  });
   const permissions = createPermissionChecker(activeRole);
 
   const value: AuthState = {
