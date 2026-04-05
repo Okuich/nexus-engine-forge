@@ -135,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     can: (permission: Permission) =>
       permissions.can(permission) && canUsePermissionByProduct(licensedProducts, permission),
     licensedProducts,
+    canOrg: (permission: OrgPermission) => hasOrgPermission(activeRole, permission),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
