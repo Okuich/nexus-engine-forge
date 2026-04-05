@@ -61,6 +61,7 @@ export const SHARED_ROUTES: readonly string[] = ['/admin'];
 export const PRODUCT_NAV_GROUPS: Record<string, Product> = {
   Engineering: 'fabrication_os',
   'ML & AI': 'fabrication_os',
+  Fabrication: 'fabrication_os',
   Business: 'midwater',
 };
 
