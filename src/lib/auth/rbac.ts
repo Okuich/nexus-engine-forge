@@ -18,6 +18,11 @@ export type Permission =
   | 'ml:train'
   | 'ml:deploy'
   | 'ml:evaluate'
+  // Fabrication
+  | 'fab:view'
+  | 'fab:manage'
+  | 'fab:quote'
+  | 'fab:schedule'
   // Marketplace / RFQs
   | 'rfq:view'
   | 'rfq:create'

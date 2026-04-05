@@ -69,6 +69,7 @@ export const PRODUCT_NAV_GROUPS: Record<string, Product> = {
 export const PERMISSION_PRODUCT_MAP: Record<string, Product> = {
   cad: 'fabrication_os',
   ml: 'fabrication_os',
+  fab: 'fabrication_os',
   rfq: 'midwater',
   order: 'midwater',
   payment: 'midwater',
