@@ -5,11 +5,11 @@
  * permissions. Works alongside productBoundary.ts (product → feature mapping)
  * and rbac.ts (role → permission matrix).
  *
- * Key rules:
- *  - `buyer`       → midwater only
- *  - `supplier`    → fabrication_os only
- *  - `owner/admin` → both products (org-wide)
- *  - Other roles   → determined by their `licensed_products` membership field
+ * Market positioning drives role locks:
+ *  - `buyer` / `procurement` → midwater  (demand monopoly — buyer aggregation)
+ *  - `supplier`              → fabrication_os (supply monopoly — supplier aggregation)
+ *  - `owner` / `admin`       → both products (org-wide)
+ *  - Other roles             → determined by their `licensed_products` membership field
  */
 
 import type { AppRole } from '@/lib/auth/rbac';
