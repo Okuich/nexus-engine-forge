@@ -101,6 +101,7 @@ const ROLE_PERMISSIONS: Record<AppRole, ReadonlySet<Permission>> = {
   ]),
 
   supplier: new Set<Permission>([
+    'fab:view', 'fab:manage', 'fab:quote', 'fab:schedule',
     'rfq:view', 'rfq:quote',
     'order:view',
     'payment:view',
