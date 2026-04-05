@@ -6,6 +6,7 @@ import type { AppRole, Permission } from '@/lib/auth/rbac';
 import type { User, Session } from '@supabase/supabase-js';
 import type { Product } from '@/services/productBoundary';
 import { canUsePermissionByProduct } from '@/services/productBoundary';
+import { resolveEffectiveProducts, hasOrgPermission, type OrgPermission } from '@/services/accessControl';
 
 interface TenantMembership {
   tenant_id: string;
