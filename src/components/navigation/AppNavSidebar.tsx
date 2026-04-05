@@ -22,6 +22,7 @@ import {
   Building2,
   Check,
   ChevronsUpDown,
+  Factory,
   FlaskConical,
   Workflow,
   ShieldCheck,
@@ -57,6 +58,10 @@ const mlItems: NavItem[] = [
   { title: 'ML Dashboard', url: '/ml', icon: Brain, permissions: ['ml:view'] },
   { title: 'Training Pipeline', url: '/pipeline', icon: Workflow, permissions: ['ml:train'] },
   { title: 'Evaluation', url: '/ml/evaluation', icon: FlaskConical, permissions: ['ml:evaluate'] },
+];
+
+const fabricationItems: NavItem[] = [
+  { title: 'Fabrication', url: '/fabrication', icon: Factory, permissions: ['fab:view'] },
 ];
 
 const businessItems: NavItem[] = [
@@ -173,6 +178,9 @@ export function AppNavSidebar() {
         )}
         {isNavGroupVisible(licensedProducts, 'ML & AI') && (
           <NavGroup label="ML & AI" items={mlItems} collapsed={collapsed} />
+        )}
+        {isNavGroupVisible(licensedProducts, 'Fabrication') && (
+          <NavGroup label="Fabrication" items={fabricationItems} collapsed={collapsed} />
         )}
         {isNavGroupVisible(licensedProducts, 'Business') && (
           <NavGroup label="Business" items={businessItems} collapsed={collapsed} />

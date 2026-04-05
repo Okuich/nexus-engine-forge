@@ -51,7 +51,7 @@ export const PRODUCT_CATALOG: Record<Product, ProductMeta> = {
 /** Routes owned by each product (no overlap allowed) */
 export const PRODUCT_ROUTES: Record<Product, readonly string[]> = {
   midwater: ['/marketplace', '/prospects', '/crm'],
-  fabrication_os: ['/', '/ml', '/pipeline', '/ml/evaluation'],
+  fabrication_os: ['/', '/ml', '/pipeline', '/ml/evaluation', '/fabrication'],
 };
 
 /** Admin route is shared — accessible from either product */
@@ -61,6 +61,7 @@ export const SHARED_ROUTES: readonly string[] = ['/admin'];
 export const PRODUCT_NAV_GROUPS: Record<string, Product> = {
   Engineering: 'fabrication_os',
   'ML & AI': 'fabrication_os',
+  Fabrication: 'fabrication_os',
   Business: 'midwater',
 };
 
@@ -68,6 +69,7 @@ export const PRODUCT_NAV_GROUPS: Record<string, Product> = {
 export const PERMISSION_PRODUCT_MAP: Record<string, Product> = {
   cad: 'fabrication_os',
   ml: 'fabrication_os',
+  fab: 'fabrication_os',
   rfq: 'midwater',
   order: 'midwater',
   payment: 'midwater',
