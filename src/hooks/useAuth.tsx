@@ -6,6 +6,7 @@ import type { AppRole, Permission } from '@/lib/auth/rbac';
 import type { User, Session } from '@supabase/supabase-js';
 import type { Product } from '@/services/productBoundary';
 import { canUsePermissionByProduct } from '@/services/productBoundary';
+import { resolveEffectiveProducts, hasOrgPermission, type OrgPermission } from '@/services/accessControl';
 
 interface TenantMembership {
   tenant_id: string;
@@ -33,6 +34,8 @@ interface AuthState {
   can: (permission: Permission) => boolean;
   // Product boundary
   licensedProducts: Product[];
+  // Organization-level permissions
+  canOrg: (permission: OrgPermission) => boolean;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -104,7 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const activeMembership = tenants.find(t => t.tenant_id === activeTenantId);
   const activeRole: AppRole | null = activeMembership?.role ?? null;
-  const licensedProducts: Product[] = activeMembership?.licensed_products ?? [];
+  const licensedProducts: Product[] = resolveEffectiveProducts({
+    role: activeRole,
+    licensedProducts: activeMembership?.licensed_products ?? [],
+  });
   const permissions = createPermissionChecker(activeRole);
 
   const value: AuthState = {
@@ -129,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     can: (permission: Permission) =>
       permissions.can(permission) && canUsePermissionByProduct(licensedProducts, permission),
     licensedProducts,
+    canOrg: (permission: OrgPermission) => hasOrgPermission(activeRole, permission),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
