@@ -7,16 +7,18 @@ import {
   prepareForInference,
   SimplificationGateError,
 } from '@/lib/geometry/simplification';
-import type { RawMesh, FaceAdjacencyGraph } from '@/lib/geometry/types';
+import type {
+  RawMesh,
+  FaceAdjacencyGraph,
+  FaceFeatures,
+  EdgeFeatures,
+} from '@/lib/geometry/types';
 
-/** Build a tessellated grid mesh on the XY plane (n×n quads → 2n² triangles) */
 function gridMesh(n: number): RawMesh {
   const positions: number[] = [];
   const indices: number[] = [];
   for (let y = 0; y <= n; y++) {
-    for (let x = 0; x <= n; x++) {
-      positions.push(x / n, y / n, 0);
-    }
+    for (let x = 0; x <= n; x++) positions.push(x / n, y / n, 0);
   }
   const idx = (x: number, y: number) => y * (n + 1) + x;
   for (let y = 0; y < n; y++) {
@@ -29,6 +31,51 @@ function gridMesh(n: number): RawMesh {
     positions: new Float32Array(positions),
     indices: new Uint32Array(indices),
   };
+}
+
+function makeGraph(numNodes: number, edges: Array<[number, number, number]>): {
+  graph: FaceAdjacencyGraph;
+  faces: FaceFeatures[];
+} {
+  const adjacency: EdgeFeatures[] = edges.map(([a, b, dih], i) => ({
+    id: i,
+    faceA: a,
+    faceB: b,
+    sharedVertices: [a, b],
+    dihedralAngle: dih,
+    isConcave: false,
+    length: 1,
+  }));
+  const neighbors = new Map<number, number[]>();
+  const degree = new Array(numNodes).fill(0);
+  for (let i = 0; i < numNodes; i++) neighbors.set(i, []);
+  for (const e of adjacency) {
+    neighbors.get(e.faceA)!.push(e.faceB);
+    neighbors.get(e.faceB)!.push(e.faceA);
+    degree[e.faceA]++;
+    degree[e.faceB]++;
+  }
+  const graph: FaceAdjacencyGraph = {
+    numNodes,
+    numEdges: adjacency.length,
+    adjacency,
+    edgeIndex: [[], []],
+    edgeAttr: [],
+    neighbors,
+    degree,
+  };
+  const faces: FaceFeatures[] = Array.from({ length: numNodes }, (_, i) => ({
+    id: i,
+    area: 1,
+    normal: [0, 0, 1],
+    centroid: [i, 0, 0],
+    curvatureMean: 0.1,
+    curvatureGaussian: 0,
+    curvatureMin: 0,
+    curvatureMax: 0,
+    surfaceClass: 'planar',
+  }));
+  return { graph, faces };
 }
 
 describe('simplifyMesh (QEM)', () => {
@@ -75,34 +122,20 @@ describe('buildLODs', () => {
   it('respects maxLevels cap', () => {
     const mesh = gridMesh(12);
     const { lods } = buildLODs(mesh, { levels: 8, maxLevels: 2 });
-    expect(lods.length).toBeLessThanOrEqual(3); // L0 + up to 2 simplified
+    expect(lods.length).toBeLessThanOrEqual(3);
   });
 });
 
 describe('simplifyGraph', () => {
   it('coarsens nodes and edges while preserving sharp boundaries', () => {
-    const graph: FaceAdjacencyGraph = {
-      nodeCount: 6,
-      edges: [
-        { id: 0, faceA: 0, faceB: 1, dihedralAngle: 0.05, sharedVertices: [0, 1], isConcave: false, length: 1 },
-        { id: 1, faceA: 1, faceB: 2, dihedralAngle: 0.05, sharedVertices: [1, 2], isConcave: false, length: 1 },
-        { id: 2, faceA: 2, faceB: 3, dihedralAngle: Math.PI / 2, sharedVertices: [2, 3], isConcave: false, length: 1 },
-        { id: 3, faceA: 3, faceB: 4, dihedralAngle: 0.05, sharedVertices: [3, 4], isConcave: false, length: 1 },
-        { id: 4, faceA: 4, faceB: 5, dihedralAngle: 0.05, sharedVertices: [4, 5], isConcave: false, length: 1 },
-      ],
-      faces: Array.from({ length: 6 }, (_, i) => ({
-        id: i,
-        area: 1,
-        normal: [0, 0, 1] as [number, number, number],
-        centroid: [i, 0, 0] as [number, number, number],
-        curvatureMean: 0,
-        curvatureGaussian: 0,
-        curvatureMin: 0,
-        curvatureMax: 0,
-        surfaceClass: 'planar' as const,
-      })),
-    };
-    const out = simplifyGraph(graph, { targetRatio: 0.5 });
+    const { graph, faces } = makeGraph(6, [
+      [0, 1, 0.05],
+      [1, 2, 0.05],
+      [2, 3, Math.PI / 2],
+      [3, 4, 0.05],
+      [4, 5, 0.05],
+    ]);
+    const out = simplifyGraph(graph, faces, { targetRatio: 0.5 });
     expect(out.nodeCount).toBeLessThanOrEqual(6);
     expect(out.nodeCount).toBeGreaterThanOrEqual(2);
     expect(out.edgeCompression).toBeLessThanOrEqual(1);
@@ -111,57 +144,45 @@ describe('simplifyGraph', () => {
 
 describe('gating', () => {
   it('blocks starter tier above triangle limit', () => {
-    const d = checkSimplificationGate({
-      tier: 'starter',
-      triangleCount: 200_000,
-    });
-    expect(d.allowed).toBe(false);
+    expect(
+      checkSimplificationGate({ tier: 'starter', triangleCount: 200_000 })
+        .allowed,
+    ).toBe(false);
   });
   it('allows enterprise for high-volume inference', () => {
-    const d = checkSimplificationGate({
-      tier: 'enterprise',
-      triangleCount: 1_000_000,
-      inferenceJobsPerHour: 100_000,
-      highVolumeInference: true,
-    });
-    expect(d.allowed).toBe(true);
+    expect(
+      checkSimplificationGate({
+        tier: 'enterprise',
+        triangleCount: 1_000_000,
+        inferenceJobsPerHour: 100_000,
+        highVolumeInference: true,
+      }).allowed,
+    ).toBe(true);
   });
   it('blocks professional above job-rate cap', () => {
-    const d = checkSimplificationGate({
-      tier: 'professional',
-      triangleCount: 1000,
-      inferenceJobsPerHour: 5000,
-    });
-    expect(d.allowed).toBe(false);
+    expect(
+      checkSimplificationGate({
+        tier: 'professional',
+        triangleCount: 1000,
+        inferenceJobsPerHour: 5000,
+      }).allowed,
+    ).toBe(false);
   });
 });
 
 describe('prepareForInference', () => {
   it('packages LODs + coarsened graph + feature matrix', () => {
     const mesh = gridMesh(8);
-    const graph: FaceAdjacencyGraph = {
-      nodeCount: 4,
-      edges: [
-        { id: 0, faceA: 0, faceB: 1, dihedralAngle: 0.01, sharedVertices: [0, 1], isConcave: false, length: 1 },
-        { id: 1, faceA: 1, faceB: 2, dihedralAngle: 0.01, sharedVertices: [1, 2], isConcave: false, length: 1 },
-        { id: 2, faceA: 2, faceB: 3, dihedralAngle: 0.01, sharedVertices: [2, 3], isConcave: false, length: 1 },
-      ],
-      faces: Array.from({ length: 4 }, (_, i) => ({
-        id: i,
-        area: 1,
-        normal: [0, 0, 1] as [number, number, number],
-        centroid: [i, 0, 0] as [number, number, number],
-        curvatureMean: 0.1,
-        curvatureGaussian: 0,
-        curvatureMin: 0,
-        curvatureMax: 0,
-        surfaceClass: 'planar' as const,
-      })),
-    };
+    const { graph, faces } = makeGraph(4, [
+      [0, 1, 0.01],
+      [1, 2, 0.01],
+      [2, 3, 0.01],
+    ]);
     const payload = prepareForInference(mesh, graph, {
       gating: { tier: 'enterprise', triangleCount: mesh.indices!.length / 3 },
       lod: { levels: 2 },
       graph: { targetRatio: 0.5 },
+      faceFeatures: faces,
     });
     expect(payload.lods.length).toBeGreaterThan(0);
     expect(payload.featureDim).toBe(7);
@@ -171,7 +192,7 @@ describe('prepareForInference', () => {
 
   it('throws SimplificationGateError when gated', () => {
     const mesh = gridMesh(4);
-    const graph: FaceAdjacencyGraph = { nodeCount: 0, edges: [], faces: [] };
+    const { graph } = makeGraph(0, []);
     expect(() =>
       prepareForInference(mesh, graph, {
         gating: { tier: 'starter', triangleCount: 10_000_000 },
