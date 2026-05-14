@@ -16,6 +16,8 @@ export { simplifyGraph } from './graphSimplifier';
 export { prepareForInference } from './inferencePipeline';
 export type { InferencePrepOptions } from './inferencePipeline';
 export { checkSimplificationGate } from './gating';
+export { checkFidelity, checkLODFidelity } from './fidelity';
+export type { FidelityOptions, FidelityReport } from './fidelity';
 export {
   SimplificationGateError,
 } from './types';
