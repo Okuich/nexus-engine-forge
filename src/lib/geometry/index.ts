@@ -23,6 +23,10 @@ export type {
   SpatialIndex,
 } from './spatial';
 
+// ── Geometry traversal pipeline (auto-routes to KD/BVH/Octree) ─
+export { GeometryTraversal, createTraversal } from './traversal';
+export type { TraversalOptions, NearestTriangleResult } from './traversal';
+
 // ── Advanced ML feature extraction ──────────────────────────────
 export {
   computeCurvature,
