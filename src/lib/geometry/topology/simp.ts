@@ -22,6 +22,7 @@ import type {
   V3,
 } from './types';
 import { worldToVoxel, type VoxelDomain } from './voxelizer';
+import { applyConstraintPenalties, type PenaltyDiagnostics } from './constraintPenalties';
 
 interface SimpRunResult {
   density: Float32Array;
@@ -224,7 +225,20 @@ export function runSIMP(
     }
     history.push(compliance);
 
-    const filtered = sensitivityFilter(sens, density, domain.dims, filterR);
+    // Optional manufacturing/physics penalty terms.
+    let penaltyDiagnostics: PenaltyDiagnostics | undefined;
+    let augmentedSens = sens;
+    if (options.constraints) {
+      const res = applyConstraintPenalties(sens, density, domain.designMask, domain.dims, {
+        ...options.constraints,
+        flow,
+        voxelSizeMm: options.constraints.voxelSizeMm ?? domain.voxelSize,
+      });
+      augmentedSens = new Float32Array(res.sensitivity);
+      penaltyDiagnostics = res.diagnostics;
+    }
+
+    const filtered = sensitivityFilter(augmentedSens, density, domain.dims, filterR);
     const updated = ocUpdate(density, filtered, domain.designMask, targetVol);
     density = new Float32Array(updated.density);
 
@@ -239,6 +253,7 @@ export function runSIMP(
       volumeFraction: updated.vol,
       change,
       elapsedMs: elapsed,
+      penaltyDiagnostics,
     } satisfies TopoIterationState);
 
     if (change < tol && iter > 5) { converged = true; break; }

@@ -21,6 +21,7 @@
  */
 import type { LoadCondition, SupportCondition, TopoOptimizerOptions, TopoIterationState } from './types';
 import { worldToVoxel, type VoxelDomain } from './voxelizer';
+import type { PenaltyDiagnostics } from './constraintPenalties';
 
 export class WebGPUUnavailableError extends Error {
   constructor(reason: string) { super(`WebGPU unavailable: ${reason}`); this.name = 'WebGPUUnavailableError'; }
@@ -457,15 +458,35 @@ export async function runSIMPGPU(
       device.queue.submit([enc.finish()]);
     }
 
-    // ── Read back compliance + filtered sensitivity (single submit each) ──
-    const [compArr, sensArr] = await Promise.all([
+    // ── Read back compliance, filtered sensitivity, and flow if needed ──
+    const needsFlow = !!options.constraints?.weights?.stress;
+    const reads: Promise<Float32Array>[] = [
       readF32(device, complianceBuf, N),
       readF32(device, sensFiltBuf, N),
-    ]);
+    ];
+    if (needsFlow) reads.push(readF32(device, flowFinal, N));
+    const results = await Promise.all(reads);
+    const compArr = results[0];
+    let sensArr = results[1];
+    const flowArr = needsFlow ? results[2] : undefined;
+
     let compliance = 0;
     for (let i = 0; i < N; i++) compliance += compArr[i];
     history.push(compliance);
     lastCompliance = compliance;
+
+    // ── Constraint penalties (post-filter on GPU path; cheap O(N·k)) ──
+    let penaltyDiagnostics: PenaltyDiagnostics | undefined;
+    if (options.constraints) {
+      const { applyConstraintPenalties } = await import('./constraintPenalties');
+      const res = applyConstraintPenalties(sensArr, density, domain.designMask, domain.dims, {
+        ...options.constraints,
+        flow: flowArr,
+        voxelSizeMm: options.constraints.voxelSizeMm ?? domain.voxelSize,
+      });
+      sensArr = new Float32Array(res.sensitivity);
+      penaltyDiagnostics = res.diagnostics;
+    }
 
     // ── OC update on CPU ──
     const updated = ocUpdate(density, sensArr, domain.designMask, targetVol);
@@ -482,6 +503,7 @@ export async function runSIMPGPU(
       volumeFraction: updated.vol,
       change,
       elapsedMs: elapsed,
+      penaltyDiagnostics,
     } satisfies TopoIterationState);
 
     if (change < tol && iter > 5) { converged = true; break; }
