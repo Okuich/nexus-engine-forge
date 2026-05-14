@@ -199,6 +199,38 @@ export type {
   CapabilityFlag,
 } from './symbolic';
 
+// ── Manifold analysis extension layer (interface only) ─────────
+export {
+  ManifoldEngine,
+  manifoldRegistry,
+  makeManifoldCapabilities,
+  stubManifoldBackend,
+  ManifoldNotImplementedError,
+  ManifoldBackendError,
+} from './manifold';
+export type {
+  ManifoldBackend,
+  ManifoldCapabilities,
+  ManifoldKind,
+  ManifoldRepresentation,
+  ManifoldDescriptor,
+  ManifoldPoint,
+  TangentVector,
+  Covector,
+  MetricTensor,
+  CurvatureSample,
+  Geodesic,
+  TopologicalInvariants,
+  PersistencePair,
+  PersistenceDiagram,
+  ManifoldMap,
+  MapKind,
+  DECOperator,
+  ManifoldResult,
+  ManifoldDispatch,
+  ManifoldCapabilityFlag,
+} from './manifold';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
