@@ -92,7 +92,7 @@ export function analyzeTopology(input: RawMesh): TopologyReport {
   const eulerChar = usedVertices.size - edges + faces;
 
   const components = countConnectedComponents(faces, edgeFaces);
-  const boundaryLoops = countBoundaryLoops(boundaryHalfEdges);
+  const boundaryLoops = countBoundaryLoops(boundaryPairs);
 
   const isClosed = boundaryEdges === 0;
   const isManifold = nonManifoldEdges === 0;
