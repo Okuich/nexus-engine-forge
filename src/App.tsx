@@ -19,6 +19,7 @@ import Marketplace from "./pages/Marketplace.tsx";
 import Admin from "./pages/Admin.tsx";
 import Fabrication from "./pages/Fabrication.tsx";
 import Pricing from "./pages/Pricing.tsx";
+import ROICalculator from "./pages/ROICalculator.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -41,7 +42,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   const location = useLocation();
-  const isPublicPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/pricing';
+  const isPublicPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/pricing' || location.pathname === '/roi';
 
   if (isPublicPage) {
     return (
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/roi" element={<ROICalculator />} />
       </Routes>
     );
   }

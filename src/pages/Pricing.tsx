@@ -322,8 +322,10 @@ export default function Pricing() {
                   <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
                     <Users className="h-4 w-4 mr-1.5" /> Talk to Sales
                   </Button>
-                  <Button variant="outline">
-                    <DollarSign className="h-4 w-4 mr-1.5" /> See ROI Calculator
+                  <Button variant="outline" asChild>
+                    <a href="/roi">
+                      <DollarSign className="h-4 w-4 mr-1.5" /> See ROI Calculator
+                    </a>
                   </Button>
                 </div>
               </CardContent>
