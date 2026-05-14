@@ -469,7 +469,7 @@ export async function runSIMPGPU(
 
     // ── OC update on CPU ──
     const updated = ocUpdate(density, sensArr, domain.designMask, targetVol);
-    density = updated.density;
+    density = new Float32Array(updated.density);
 
     let change = 0;
     for (let i = 0; i < N; i++) change = Math.max(change, Math.abs(density[i] - prev[i]));
