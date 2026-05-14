@@ -145,6 +145,31 @@ export type {
   InferencePrepOptions,
 } from './simplification';
 
+// ── Collision & interference analysis engine ────────────────────
+export {
+  detectCollisions,
+  detectCollisionsGated,
+  sweepMotion,
+  sweepMotionGated,
+  checkCollisionGate,
+  trianglesIntersect,
+  CollisionGateError,
+} from './collision';
+export type {
+  AssemblyPart,
+  MovingPart,
+  Transform as CollisionTransform,
+  MotionKeyframe,
+  CollisionDetectionOptions,
+  CollisionPair,
+  InterferenceReport,
+  MotionSweepOptions,
+  MotionSweepResult,
+  CollisionTier,
+  CollisionGatingContext,
+  CollisionGatingDecision,
+} from './collision';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,

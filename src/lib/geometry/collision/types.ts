@@ -5,7 +5,8 @@
  * motion sweeping, and tier gating.
  */
 
-import type { AABB, RawMesh, Vec3 } from '../types';
+import type { RawMesh, Vec3 } from '../types';
+import type { AABB } from '../core/spatialIndex';
 
 export type CollisionTier = 'starter' | 'professional' | 'enterprise';
 
@@ -114,4 +115,4 @@ export class CollisionGateError extends Error {
   }
 }
 
-export type { AABB, Vec3 };
+export type { Vec3 };

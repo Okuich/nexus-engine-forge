@@ -10,7 +10,8 @@
  */
 
 import { BVH, aabb as aabbOps } from '../core/spatialIndex';
-import type { AABB, RawMesh, Vec3 } from '../types';
+import type { AABB } from '../core/spatialIndex';
+import type { RawMesh, Vec3 } from '../types';
 import { transformMesh } from './transform';
 import { trianglesIntersect, triangleIntersectionPoint } from './triTri';
 import type {
