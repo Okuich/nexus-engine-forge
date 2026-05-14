@@ -24,6 +24,8 @@ export {
   applyManufacturability,
 } from './manufacturability';
 export { checkTopoGate, TopoGateError, TOPO_GATING_LIMITS } from './gating';
+export { applyConstraintPenalties } from './constraintPenalties';
+export type { ConstraintPenaltyOptions, PenaltyDiagnostics } from './constraintPenalties';
 export type {
   LoadCondition,
   SupportCondition,
