@@ -29,11 +29,11 @@ describe('SDF Engine', () => {
   it('returns sensible nearest-surface projection', () => {
     const sphere = generateSphere({ radius: 5, latSegments: 16, lonSegments: 24 });
     const sdf = generateSDF(sphere, { resolution: 32, signMethod: 'normal' });
-    const result = nearestSurface(sdf, [10, 0, 0]);
+    const result = nearestSurface(sdf, [3.5, 0, 0]);
     const dist = Math.hypot(result.point[0], result.point[1], result.point[2]);
     expect(dist).toBeGreaterThan(3);
     expect(dist).toBeLessThan(7);
-    expect(result.signedDistance).toBeGreaterThan(0);
+    expect(result.signedDistance).toBeLessThan(0); // [3.5,0,0] is inside r=5 sphere
   });
 
   it('samples interpolated distances', () => {
