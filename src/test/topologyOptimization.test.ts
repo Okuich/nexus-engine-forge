@@ -103,10 +103,10 @@ describe('Topology Optimization Pipeline', () => {
     const box = generateBox({ width: 20, height: 10, depth: 10 });
     const proposal = optimizeTopology({
       mesh: box,
-      loads: [{ point: [9, 5, 5], force: [0, -200, 0] }],
+      loads: [{ point: [8, 0, 0], force: [0, -200, 0] }],
       supports: [
-        { point: [-9, 5, 5] },
-        { point: [-9, 5, 5] },
+        { point: [-8, 0, 0] },
+        { point: [-8, 2, 2] },
       ],
       manufacturing: { process: 'cnc_milling', minFeatureMm: 1, symmetry: 'z' },
       physics: validPhysics,
@@ -132,8 +132,8 @@ describe('Topology Optimization Pipeline', () => {
     const box = generateBox({ width: 16, height: 8, depth: 8 });
     const req = {
       mesh: box,
-      loads: [{ point: [7, 4, 4] as [number, number, number], force: [0, -100, 0] as [number, number, number] }],
-      supports: [{ point: [-7, 4, 4] as [number, number, number] }],
+      loads: [{ point: [6, 0, 0] as [number, number, number], force: [0, -100, 0] as [number, number, number] }],
+      supports: [{ point: [-6, 0, 0] as [number, number, number] }],
       manufacturing: { process: 'cnc_milling' as const, minFeatureMm: 1 },
       physics: validPhysics,
       cost: { material: 'aluminum_6061' as const },
