@@ -224,7 +224,21 @@ export function runSIMP(
     }
     history.push(compliance);
 
-    const filtered = sensitivityFilter(sens, density, domain.dims, filterR);
+    // Optional manufacturing/physics penalty terms.
+    let penaltyDiagnostics: import('./constraintPenalties').PenaltyDiagnostics | undefined;
+    let augmentedSens = sens;
+    if (options.constraints) {
+      const { applyConstraintPenalties } = await import('./constraintPenalties');
+      const res = applyConstraintPenalties(sens, density, domain.designMask, domain.dims, {
+        ...options.constraints,
+        flow,
+        voxelSizeMm: options.constraints.voxelSizeMm ?? domain.voxelSize,
+      });
+      augmentedSens = res.sensitivity;
+      penaltyDiagnostics = res.diagnostics;
+    }
+
+    const filtered = sensitivityFilter(augmentedSens, density, domain.dims, filterR);
     const updated = ocUpdate(density, filtered, domain.designMask, targetVol);
     density = new Float32Array(updated.density);
 
@@ -239,6 +253,7 @@ export function runSIMP(
       volumeFraction: updated.vol,
       change,
       elapsedMs: elapsed,
+      penaltyDiagnostics,
     } satisfies TopoIterationState);
 
     if (change < tol && iter > 5) { converged = true; break; }
