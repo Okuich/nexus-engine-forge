@@ -422,7 +422,7 @@ type JsonEnvelope = {
 };
 
 export function toJSON(data: SerializedSpatialIndex): JsonEnvelope {
-  const p = data.payload as Record<string, unknown>;
+  const p = data.payload as unknown as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(p)) {
     if (v instanceof Float32Array || v instanceof Uint32Array) {
