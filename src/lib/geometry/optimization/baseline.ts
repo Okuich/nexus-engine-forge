@@ -4,8 +4,7 @@
  * Volume via signed-tetrahedron sum, area via triangle areas.
  * Cost = material cost + process rate × volume + amortized tooling.
  */
-import type { RawMesh } from '../core/meshGenerator';
-import { triangleArea } from '../meshMath';
+import type { RawMesh } from '../types';
 import type { Material, ManufacturingProcess, OptimizationContext } from './types';
 import {
   MATERIAL_DB,
@@ -22,23 +21,29 @@ export interface BaselineMetrics {
 }
 
 export function computeVolume(mesh: RawMesh): number {
-  const { positions, indices } = mesh;
+  const p = mesh.positions as ArrayLike<number>;
+  const idx = mesh.indices as ArrayLike<number>;
   let v = 0;
-  for (let i = 0; i < indices.length; i += 3) {
-    const a = indices[i] * 3, b = indices[i + 1] * 3, c = indices[i + 2] * 3;
-    const ax = positions[a], ay = positions[a + 1], az = positions[a + 2];
-    const bx = positions[b], by = positions[b + 1], bz = positions[b + 2];
-    const cx = positions[c], cy = positions[c + 1], cz = positions[c + 2];
-    v += (ax * (by * cz - bz * cy) + bx * (cy * az - cy * 0 - cz * ay) + cx * (ay * bz - az * by)) / 6;
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i] * 3, b = idx[i + 1] * 3, c = idx[i + 2] * 3;
+    const ax = p[a], ay = p[a + 1], az = p[a + 2];
+    const bx = p[b], by = p[b + 1], bz = p[b + 2];
+    const cx = p[c], cy = p[c + 1], cz = p[c + 2];
+    v += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
   }
   return Math.abs(v);
 }
 
 export function computeSurfaceArea(mesh: RawMesh): number {
-  const { positions, indices } = mesh;
+  const p = mesh.positions as ArrayLike<number>;
+  const idx = mesh.indices as ArrayLike<number>;
   let s = 0;
-  for (let i = 0; i < indices.length; i += 3) {
-    s += triangleArea(positions, indices[i], indices[i + 1], indices[i + 2]);
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i] * 3, b = idx[i + 1] * 3, c = idx[i + 2] * 3;
+    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
+    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    s += 0.5 * Math.hypot(nx, ny, nz);
   }
   return s;
 }

@@ -2,7 +2,7 @@
  * Geometry Optimization Engine — shared types.
  */
 
-import type { RawMesh } from '../core/meshGenerator';
+import type { RawMesh } from '../types';
 
 export type ManufacturingProcess =
   | 'cnc_milling'

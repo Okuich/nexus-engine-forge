@@ -4,7 +4,7 @@
  * Each rule consumes a mesh + context and emits zero or more Suggestions.
  * Rules are pure, deterministic, and individually time-bounded.
  */
-import type { RawMesh } from '../core/meshGenerator';
+import type { RawMesh } from '../types';
 import { computeThickness } from '../features/thickness';
 import { computeSharpness } from '../features/sharpness';
 import { computeCurvature } from '../features/curvature';
@@ -25,15 +25,16 @@ export function ruleWallThickness(mesh: RawMesh, ctx: OptimizationContext): Sugg
     PROCESS_MIN_WALL_MM[ctx.process],
     ctx.physics?.minWallMm ?? 0,
   );
-  const { perFace } = computeThickness(mesh, { samples: 8 });
+  const { thickness } = computeThickness(mesh, { samples: 8 });
   const thin: number[] = [];
-  for (let i = 0; i < perFace.length; i++) {
-    if (perFace[i] > 0 && perFace[i] < minWall) thin.push(i);
+  for (let i = 0; i < thickness.length; i++) {
+    const t = thickness[i];
+    if (Number.isFinite(t) && t > 0 && t < minWall) thin.push(i);
   }
   if (!thin.length) return [];
   const props = MATERIAL_DB[ctx.material];
   // Estimate added mass to thicken to minWall over flagged faces.
-  const avgThin = thin.reduce((s, i) => s + perFace[i], 0) / thin.length;
+  const avgThin = thin.reduce((s, i) => s + thickness[i], 0) / thin.length;
   const deltaMm = Math.max(0, minWall - avgThin);
   const addedVolMm3 = thin.length * deltaMm * 1.0; // ~1mm² per face avg
   const addedMassG = (addedVolMm3 * 1e-9) * props.density * 1000;
@@ -58,8 +59,8 @@ export function ruleWallThickness(mesh: RawMesh, ctx: OptimizationContext): Sugg
 
 /** Sharp-edge rule: recommend fillets on stress concentrators. */
 export function ruleFillets(mesh: RawMesh, ctx: OptimizationContext): Suggestion[] {
-  const report = computeSharpness(mesh, { creaseDeg: 60 });
-  const concaveCreases = report.edges.filter(e => e.isCrease && e.signedAngle < 0);
+  const report = computeSharpness(mesh, { creaseThreshold: Math.PI / 3 });
+  const concaveCreases = report.edges.filter(e => e.isCrease && e.signedSharpness < 0);
   if (concaveCreases.length < 3) return [];
   return [{
     id: nid('fillet'),
@@ -188,10 +189,10 @@ export function ruleFeatureConsolidation(mesh: RawMesh, ctx: OptimizationContext
   if (ctx.process !== 'cnc_milling' && ctx.process !== 'cnc_turning') return [];
   const cur = computeCurvature(mesh);
   let highCount = 0;
-  for (let i = 0; i < cur.vertices.length; i++) {
-    if (Math.abs(cur.vertices[i].mean) > 1.5) highCount++;
+  for (let i = 0; i < cur.perVertex.length; i++) {
+    if (Math.abs(cur.perVertex[i].mean) > 1.5) highCount++;
   }
-  if (highCount < cur.vertices.length * 0.15) return [];
+  if (highCount < cur.perVertex.length * 0.15) return [];
   return [{
     id: nid('consol'),
     category: 'feature_consolidation',

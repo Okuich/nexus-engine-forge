@@ -9,7 +9,7 @@
  *
  * Designed to complete within ~100ms on meshes up to ~50k triangles.
  */
-import type { RawMesh } from '../core/meshGenerator';
+import type { RawMesh } from '../types';
 import type {
   OptimizationContext,
   OptimizationReport,
