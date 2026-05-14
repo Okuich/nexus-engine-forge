@@ -21,20 +21,40 @@ import type { RawMesh } from '../types';
 import { computeCurvature, type CurvatureField } from './curvature';
 import { computeThickness, type ThicknessOptions, type ThicknessResult } from './thickness';
 import { computeSharpness, type SharpnessOptions, type SharpnessReport } from './sharpness';
+import {
+  extractSDFFeatures,
+  SDF_FEATURE_COLUMNS,
+  type SDFFeatureOptions,
+  type SDFFeatureSet,
+} from './sdfFeatures';
 
 export interface AdvancedFeatureOptions {
   thickness?: ThicknessOptions | false;
   sharpness?: SharpnessOptions;
   /** Replace NaN thickness with this sentinel value. Default −1. */
   thicknessNaNSentinel?: number;
+  /**
+   * When set, the SDF feature engine runs and appends 4 columns
+   * (`sdfCentroidDist`, `sdfShellThickness`, `sdfGradAlignment`,
+   * `sdfVertexMinDist`) to the per-face matrix.
+   *
+   * Pass `true` for defaults, an options object to customize, or omit/false
+   * to skip SDF integration.
+   */
+  sdf?: SDFFeatureOptions | boolean;
 }
 
 export interface AdvancedFeatureSet {
-  /** [numFaces × 8] feature matrix ready for ML consumption. */
+  /**
+   * Per-face feature matrix. 8 base columns; +4 if SDF is enabled.
+   * Use `featureColumnsFor(opts)` to get the matching column names.
+   */
   matrix: number[][];
   curvature: CurvatureField;
   thickness: ThicknessResult | null;
   sharpness: SharpnessReport;
+  /** Present only when SDF integration was requested. */
+  sdf: SDFFeatureSet | null;
   stats: {
     faces: number;
     meanGaussian: number;
@@ -42,10 +62,12 @@ export interface AdvancedFeatureSet {
     meanThickness: number;
     creaseRatio: number;
     sharpnessMean: number;
+    /** Present only when SDF integration was requested. */
+    sdf?: SDFFeatureSet['stats'];
   };
 }
 
-const FEATURE_COLUMNS = [
+const BASE_FEATURE_COLUMNS = [
   'gaussianCurvature',
   'meanCurvature',
   'principalK1',
@@ -56,8 +78,19 @@ const FEATURE_COLUMNS = [
   'isCrease',
 ] as const;
 
-export type FeatureColumn = (typeof FEATURE_COLUMNS)[number];
+const FEATURE_COLUMNS = BASE_FEATURE_COLUMNS;
+
+export type FeatureColumn =
+  | (typeof BASE_FEATURE_COLUMNS)[number]
+  | (typeof SDF_FEATURE_COLUMNS)[number];
 export const featureColumns: readonly FeatureColumn[] = FEATURE_COLUMNS;
+
+/** Returns the matching column list for the requested option set. */
+export function featureColumnsFor(opts: AdvancedFeatureOptions = {}): readonly FeatureColumn[] {
+  return opts.sdf
+    ? [...BASE_FEATURE_COLUMNS, ...SDF_FEATURE_COLUMNS]
+    : BASE_FEATURE_COLUMNS;
+}
 
 export function extractAdvancedFeatures(
   mesh: RawMesh,
