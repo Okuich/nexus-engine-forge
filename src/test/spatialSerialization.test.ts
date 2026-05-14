@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { BVH, Octree } from '@/lib/geometry/core/spatialIndex';
+import { BVH } from '@/lib/geometry/core/spatialIndex';
+import { Octree } from '@/lib/geometry/spatial/octree';
 import { KDTree } from '@/lib/geometry/spatial/kdTree';
 import {
   serializeBVH, deserializeBVH,
