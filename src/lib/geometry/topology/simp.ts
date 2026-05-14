@@ -17,6 +17,8 @@
 import type {
   LoadCondition,
   SupportCondition,
+  LoadCase,
+  LoadCaseAggregation,
   TopoOptimizerOptions,
   TopoIterationState,
   V3,
@@ -27,9 +29,20 @@ import { applyConstraintPenalties, type PenaltyDiagnostics } from './constraintP
 interface SimpRunResult {
   density: Float32Array;
   compliance: number;
+  /** Per-case compliance breakdown for the final iteration. */
+  perCaseCompliance: number[];
+  loadCaseAggregation: LoadCaseAggregation;
   iterations: number;
   converged: boolean;
-  history: number[]; // compliance per iter
+  history: number[]; // aggregated compliance per iter
+}
+
+interface ProjectedCase {
+  loadVoxels: number[];
+  loadMags: number[];
+  supportSet: Set<number>;
+  weight: number;
+  name?: string;
 }
 
 const EMIN = 1e-3; // stiffness floor for void cells
