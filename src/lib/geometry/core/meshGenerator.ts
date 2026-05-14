@@ -101,31 +101,49 @@ export function generateSphere(opts: SphereOptions = {}): RawMesh {
   const [cx, cy, cz] = opts.center ?? [0, 0, 0];
 
   const b = createBuilder();
-  // grid of vertices including duplicated seam? we keep single seam (acceptable for analysis)
-  for (let i = 0; i <= lat; i++) {
-    const theta = (i / lat) * Math.PI; // 0..π
+  // Pole vertices
+  const top = b.addVertex(cx, cy + r, cz);
+  const bot = b.addVertex(cx, cy - r, cz);
+  // Interior latitude rings (no duplicated seam — last lon wraps to 0)
+  const ringStart: number[] = [];
+  for (let i = 1; i < lat; i++) {
+    const theta = (i / lat) * Math.PI;
     const sinT = Math.sin(theta);
     const cosT = Math.cos(theta);
-    for (let j = 0; j <= lon; j++) {
+    ringStart.push(b.positions.length / 3);
+    for (let j = 0; j < lon; j++) {
       const phi = (j / lon) * Math.PI * 2;
-      const x = cx + r * sinT * Math.cos(phi);
-      const y = cy + r * cosT;
-      const z = cz + r * sinT * Math.sin(phi);
-      b.addVertex(x, y, z);
+      b.addVertex(
+        cx + r * sinT * Math.cos(phi),
+        cy + r * cosT,
+        cz + r * sinT * Math.sin(phi),
+      );
     }
   }
 
-  const stride = lon + 1;
-  for (let i = 0; i < lat; i++) {
+  // Top cap (top pole → first ring)
+  for (let j = 0; j < lon; j++) {
+    const a = ringStart[0] + j;
+    const c = ringStart[0] + ((j + 1) % lon);
+    b.addTriangle(top, a, c);
+  }
+  // Body quads between rings
+  for (let i = 0; i < ringStart.length - 1; i++) {
     for (let j = 0; j < lon; j++) {
-      const a = i * stride + j;
-      const c = a + stride;
-      const d = c + 1;
-      const e = a + 1;
-      // Skip degenerate quads at poles (still emit, downstream filters)
-      if (i !== 0) b.addTriangle(a, c, e);
-      if (i !== lat - 1) b.addTriangle(e, c, d);
+      const j2 = (j + 1) % lon;
+      const a = ringStart[i] + j;
+      const e = ringStart[i] + j2;
+      const c = ringStart[i + 1] + j;
+      const d = ringStart[i + 1] + j2;
+      b.addQuad(a, e, d, c);
     }
+  }
+  // Bottom cap (last ring → bottom pole)
+  const lastRing = ringStart[ringStart.length - 1];
+  for (let j = 0; j < lon; j++) {
+    const a = lastRing + j;
+    const c = lastRing + ((j + 1) % lon);
+    b.addTriangle(bot, c, a);
   }
   return b.build();
 }
