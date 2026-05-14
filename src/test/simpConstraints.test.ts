@@ -20,7 +20,7 @@ describe('SIMP constraint penalties', () => {
     const sens = new Float32Array(N).fill(-1);
     const mask = new Uint8Array(N).fill(1);
     const { sensitivity, diagnostics } = applyConstraintPenalties(sens, density, mask, dims, {
-      manufacturing: { process: 'sla', pullAxis: 'z', maxOverhangDeg: 0 },
+      manufacturing: { process: 'fdm_3d_print', pullAxis: 'z', maxOverhangDeg: 0 },
       weights: { overhang: 1.0 },
     });
     // Cells above the build plate (k>0) should have *increased* sensitivity (less negative).
@@ -78,7 +78,7 @@ describe('SIMP constraint penalties', () => {
       {
         maxIterations: 4,
         constraints: {
-          manufacturing: { process: 'sla', pullAxis: 'z', maxOverhangDeg: 0 },
+          manufacturing: { process: 'fdm_3d_print', pullAxis: 'z', maxOverhangDeg: 0 },
           weights: { overhang: 0.1 },
         },
         onIteration: (s) => { states.push(s.penaltyDiagnostics?.overhangViolations ?? -1); },
