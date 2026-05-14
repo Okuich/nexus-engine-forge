@@ -231,10 +231,11 @@ async function readF32(device: GPUDevice, src: GPUBuffer, lengthFloats: number):
   enc.copyBufferToBuffer(src, 0, stage, 0, bytes);
   device.queue.submit([enc.finish()]);
   await stage.mapAsync(GPUMapMode.READ);
-  const out = new Float32Array(stage.getMappedRange().slice(0));
+  const copy = new ArrayBuffer(bytes);
+  new Uint8Array(copy).set(new Uint8Array(stage.getMappedRange()));
   stage.unmap();
   stage.destroy();
-  return out;
+  return new Float32Array(copy);
 }
 
 // ─── OC update (CPU — lightweight bisection) ───────────────────────────────

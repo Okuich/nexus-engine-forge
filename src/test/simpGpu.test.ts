@@ -9,13 +9,12 @@ import type { VoxelDomain } from '@/lib/geometry/topology';
 
 function tinyDomain(n = 6): VoxelDomain {
   const N = n * n * n;
-  const designMask = new Uint8Array(N).fill(1);
   return {
     dims: [n, n, n],
-    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    origin: [0, 0, 0],
     voxelSize: 1 / n,
-    designMask,
-  } as VoxelDomain;
+    designMask: new Uint8Array(N).fill(1),
+  };
 }
 
 describe('GPU SIMP', () => {
