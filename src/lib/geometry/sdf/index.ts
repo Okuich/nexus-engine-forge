@@ -37,6 +37,16 @@ export type {
   SDFChunk,
   ChunkProgress,
 } from './sdfChunked';
+export {
+  sdfCacheKey,
+  getOrGenerateSDF,
+  InMemorySDFCache,
+  setSDFCacheStore,
+  getSDFCacheStore,
+  getSDFCacheStats,
+  resetSDFCacheStats,
+} from './sdfCache';
+export type { SDFCacheStore, LRUCacheOptions, SDFCacheStats } from './sdfCache';
 export type {
   SDFGenerationOptions,
   SDFGrid,
