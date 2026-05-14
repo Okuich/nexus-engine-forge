@@ -23,9 +23,20 @@ export type {
 export {
   extractAdvancedFeatures,
   featureColumns,
+  featureColumnsFor,
 } from './advancedExtractor';
 export type {
   AdvancedFeatureOptions,
   AdvancedFeatureSet,
   FeatureColumn,
 } from './advancedExtractor';
+
+export {
+  extractSDFFeatures,
+  SDF_FEATURE_COLUMNS,
+} from './sdfFeatures';
+export type {
+  SDFFeatureOptions,
+  SDFFeatureSet,
+  SDFFeatureColumn,
+} from './sdfFeatures';
