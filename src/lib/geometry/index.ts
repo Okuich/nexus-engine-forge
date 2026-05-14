@@ -120,6 +120,31 @@ export type {
   TopoTier,
 } from './topology';
 
+// ── Geometry simplification engine ──────────────────────────────
+export {
+  simplifyMesh,
+  buildLODs,
+  simplifyGraph,
+  prepareForInference,
+  checkSimplificationGate,
+  SimplificationGateError,
+} from './simplification';
+export type {
+  SimplifyOptions,
+  SimplifiedMesh,
+  SimplifiedLOD,
+  SimplificationStats,
+  MultiResolutionResult,
+  SimplifiedGraph,
+  GraphSimplifyOptions,
+  InferenceReadyPayload,
+  SimplificationTier,
+  SimplificationGatingContext,
+  SimplificationGatingDecision,
+  LODOptions,
+  InferencePrepOptions,
+} from './simplification';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
