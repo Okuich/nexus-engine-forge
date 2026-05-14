@@ -27,6 +27,16 @@ export {
   gradient,
 } from './sdfQuery';
 export { checkSDFGate, SDFGateError } from './gating';
+export {
+  generateSDFStream,
+  generateSDFChunked,
+  generateSDFReadableStream,
+} from './sdfChunked';
+export type {
+  ChunkedSDFOptions,
+  SDFChunk,
+  ChunkProgress,
+} from './sdfChunked';
 export type {
   SDFGenerationOptions,
   SDFGrid,
