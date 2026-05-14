@@ -136,8 +136,12 @@ export interface TopoProposal {
   dims: [number, number, number];
   origin: V3;
   voxelSize: number;
-  /** Final compliance (lower = stiffer). */
+  /** Final aggregated compliance (lower = stiffer). */
   compliance: number;
+  /** Per-load-case compliance breakdown (matches `loadCases` order). */
+  perCaseCompliance?: number[];
+  /** Aggregation strategy used for `compliance`. */
+  loadCaseAggregation?: LoadCaseAggregation;
   /** Achieved volume fraction. */
   volumeFraction: number;
   /** Estimated mass in grams. */
