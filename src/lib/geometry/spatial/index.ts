@@ -66,3 +66,25 @@ export function buildSpatialIndex(
     queryBox: b.queryBox.bind(b),
   };
 }
+
+// ── Serialization ─────────────────────────────────────────────
+export {
+  serializeBVH,
+  deserializeBVH,
+  serializeOctree,
+  deserializeOctree,
+  serializeKDTree,
+  deserializeKDTree,
+  serializeSpatialIndex,
+  deserializeSpatialIndex,
+  toJSON as spatialIndexToJSON,
+  fromJSON as spatialIndexFromJSON,
+  SPATIAL_FORMAT_VERSION,
+} from './serialization';
+export type {
+  SerializedSpatialIndex,
+  SerializedBVH,
+  SerializedOctree,
+  SerializedKDTree,
+  SerializedKind,
+} from './serialization';
