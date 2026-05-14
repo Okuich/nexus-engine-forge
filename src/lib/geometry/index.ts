@@ -10,6 +10,9 @@ export { extractFeatures, toGraphDict } from './extractionEngine';
 export { validateMesh } from './meshValidator';
 export { buildAdjacencyGraph, connectedComponents } from './adjacencyGraph';
 
+// ── Computational geometry core layer ────────────────────────────
+export * from './core';
+
 // ── Math primitives ──────────────────────────────────────────────
 export {
   triangleArea,
