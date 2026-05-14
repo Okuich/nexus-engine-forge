@@ -26,6 +26,12 @@ export {
 export { checkTopoGate, TopoGateError, TOPO_GATING_LIMITS } from './gating';
 export { applyConstraintPenalties } from './constraintPenalties';
 export type { ConstraintPenaltyOptions, PenaltyDiagnostics } from './constraintPenalties';
+export { marchingCubes, meshFromDensity } from './marchingCubes';
+export type { DensityField, MarchingCubesOptions } from './marchingCubes';
+export { exportSTL, exportSTLBinary, exportOBJ, exportMesh } from './meshExport';
+export type { ExportFormat, ExportOptions } from './meshExport';
+export { proposalToMesh } from './proposalMesh';
+export type { ProposalMeshOptions, ProposalMeshResult } from './proposalMesh';
 export type {
   LoadCondition,
   SupportCondition,
