@@ -195,11 +195,14 @@ export function applyManufacturability(
   if (constraints.maxOverhangDeg && constraints.pullAxis) {
     bin = enforceOverhang(bin, domain.dims, constraints.pullAxis, constraints.maxOverhangDeg);
   }
-  // Prune disconnected islands
+  // Prune disconnected islands — pin supports & loads as anchors
   const supportIndices: number[] = [];
   for (const p of supportPoints) {
     const { idx } = worldToVoxel(domain, p);
-    if (idx >= 0) supportIndices.push(idx);
+    if (idx >= 0) {
+      supportIndices.push(idx);
+      bin[idx] = 1; // support voxel must be solid for connectivity seed
+    }
   }
   if (supportIndices.length) {
     bin = keepConnectedToSupports(bin, domain.dims, supportIndices);
