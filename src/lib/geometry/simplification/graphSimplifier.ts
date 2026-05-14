@@ -5,38 +5,22 @@
  * and aggregating per-cluster features for downstream inference.
  */
 
-import type { FaceAdjacencyGraph, Vec3 } from '../types';
+import type { FaceAdjacencyGraph, FaceFeatures } from '../types';
 import type { GraphSimplifyOptions, SimplifiedGraph } from './types';
 
-interface FaceAdjacencyGraphLike {
-  nodeCount: number;
-  edges: Array<{
-    faceA: number;
-    faceB: number;
-    dihedralAngle: number;
-    isConcave?: boolean;
-    length?: number;
-  }>;
-  faces?: Array<{
-    area: number;
-    normal: Vec3;
-    curvatureMean?: number;
-  }>;
-}
-
 export function simplifyGraph(
-  graph: FaceAdjacencyGraph | FaceAdjacencyGraphLike,
+  graph: FaceAdjacencyGraph,
+  faces: FaceFeatures[] = [],
   options: GraphSimplifyOptions = {},
 ): SimplifiedGraph {
-  const g = graph as FaceAdjacencyGraphLike;
-  const n = g.nodeCount;
+  const n = graph.numNodes;
   const sharpAngle = options.preserveSharpAngle ?? Math.PI / 4;
   const targetRatio = options.targetRatio ?? 0.5;
   const targetNodes =
     options.targetNodes ?? Math.max(2, Math.floor(n * targetRatio));
 
-  // Sort edges by weight desc; weight = inverse dihedral (smooth pairs collapse first)
-  const candidates = g.edges
+  // Sort smooth edges (low dihedral) first; never collapse across sharp ones.
+  const candidates = graph.adjacency
     .filter((e) => e.dihedralAngle <= sharpAngle)
     .map((e) => ({
       a: e.faceA,
@@ -65,7 +49,6 @@ export function simplifyGraph(
     activeNodes--;
   }
 
-  // Collect clusters
   const clusterMap = new Map<number, number>();
   const clusters: number[][] = [];
   for (let i = 0; i < n; i++) {
@@ -79,11 +62,10 @@ export function simplifyGraph(
     clusters[idx].push(i);
   }
 
-  // Build coarse edges (dedup)
   const edgeSet = new Set<number>();
   const edges: Array<[number, number]> = [];
   const nc = clusters.length;
-  for (const e of g.edges) {
+  for (const e of graph.adjacency) {
     const ca = clusterMap.get(find(e.faceA))!;
     const cb = clusterMap.get(find(e.faceB))!;
     if (ca === cb) continue;
@@ -95,8 +77,6 @@ export function simplifyGraph(
     edges.push([lo, hi]);
   }
 
-  // Aggregate node features
-  const faces = g.faces ?? [];
   const nodeFeatures = clusters.map((members) => {
     let area = 0;
     let nx = 0,
@@ -129,6 +109,6 @@ export function simplifyGraph(
     edges,
     nodeFeatures,
     edgeCompression:
-      g.edges.length > 0 ? edges.length / g.edges.length : 0,
+      graph.numEdges > 0 ? edges.length / graph.numEdges : 0,
   };
 }

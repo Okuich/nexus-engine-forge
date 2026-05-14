@@ -10,7 +10,7 @@
  * by Midwater's pricing / DFM / classification models.
  */
 
-import type { FaceAdjacencyGraph, RawMesh } from '../types';
+import type { FaceAdjacencyGraph, FaceFeatures, RawMesh } from '../types';
 import { buildLODs, type LODOptions } from './lod';
 import { simplifyGraph } from './graphSimplifier';
 import { checkSimplificationGate } from './gating';
@@ -25,6 +25,8 @@ export interface InferencePrepOptions {
   lod?: LODOptions;
   graph?: GraphSimplifyOptions;
   gating: SimplificationGatingContext;
+  /** Optional per-face features used to aggregate node features in coarse graph. */
+  faceFeatures?: FaceFeatures[];
 }
 
 export function prepareForInference(
@@ -40,7 +42,7 @@ export function prepareForInference(
     maxLevels: decision.maxLODs,
   });
 
-  const coarseGraph = simplifyGraph(graph, options.graph);
+  const coarseGraph = simplifyGraph(graph, options.faceFeatures, options.graph);
 
   // Build flat feature matrix: [area, nx, ny, nz, curvature, |members|, levelHint]
   const featureDim = 7;

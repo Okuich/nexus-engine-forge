@@ -78,11 +78,12 @@ export function buildLODs(
 
   for (let l = 1; l <= levels; l++) {
     cumulativeRatio *= ratio;
+    const currentTri = ((current.indices!.length / 3) | 0);
     const targetTri = Math.max(
       minTris,
       Math.floor(inputTri * cumulativeRatio),
     );
-    if (targetTri >= (current.indices!.length / 3) | 0) break;
+    if (targetTri >= currentTri) break;
     if (targetTri < minTris) break;
 
     const { mesh: out, stats } = simplifyMesh(current, {
