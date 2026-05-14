@@ -387,8 +387,9 @@ export function generateSDFReadableStream(
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
-      const { value, done } = await iter.next();
-      if (done) { controller.close(); return; }
+      const next = await iter.next();
+      if (next.done) { controller.close(); return; }
+      const value: SDFChunk = next.value;
       const bytes = new Uint8Array(value.data.buffer, value.data.byteOffset, value.data.byteLength);
       let bin = '';
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
