@@ -226,16 +226,15 @@ export function runSIMP(
     history.push(compliance);
 
     // Optional manufacturing/physics penalty terms.
-    let penaltyDiagnostics: import('./constraintPenalties').PenaltyDiagnostics | undefined;
+    let penaltyDiagnostics: PenaltyDiagnostics | undefined;
     let augmentedSens = sens;
     if (options.constraints) {
-      const { applyConstraintPenalties } = await import('./constraintPenalties');
       const res = applyConstraintPenalties(sens, density, domain.designMask, domain.dims, {
         ...options.constraints,
         flow,
         voxelSizeMm: options.constraints.voxelSizeMm ?? domain.voxelSize,
       });
-      augmentedSens = res.sensitivity;
+      augmentedSens = new Float32Array(res.sensitivity);
       penaltyDiagnostics = res.diagnostics;
     }
 
