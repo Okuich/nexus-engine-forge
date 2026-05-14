@@ -21,6 +21,7 @@ import Fabrication from "./pages/Fabrication.tsx";
 import Pricing from "./pages/Pricing.tsx";
 import ROICalculator from "./pages/ROICalculator.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import SpatialDebug from "./pages/SpatialDebug.tsx";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +68,7 @@ function AppRoutes() {
         <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         <Route path="/fabrication" element={<ProtectedRoute><Fabrication /></ProtectedRoute>} />
+        <Route path="/spatial-debug" element={<ProtectedRoute><SpatialDebug /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
