@@ -35,6 +35,8 @@ export type { ProposalMeshOptions, ProposalMeshResult } from './proposalMesh';
 export type {
   LoadCondition,
   SupportCondition,
+  LoadCase,
+  LoadCaseAggregation,
   ManufacturingConstraints,
   PhysicsValidation,
   CostObjective,
