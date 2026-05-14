@@ -73,6 +73,9 @@ export type {
 
 export { MeshValidationError, MeshErrorCode } from './types';
 
+// ── Geometry optimization engine ────────────────────────────────
+export * from './optimization';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
