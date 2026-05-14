@@ -98,6 +98,28 @@ export type {
   SDFGatingDecision,
 } from './sdf';
 
+// ── Topology optimization engine ────────────────────────────────
+export {
+  optimizeTopology,
+  refineTopology,
+  runSIMP,
+  voxelizeForTopology,
+  applyManufacturability,
+  checkTopoGate,
+  TopoGateError,
+} from './topology';
+export type {
+  TopologyOptimizationRequest,
+  LoadCondition,
+  SupportCondition,
+  ManufacturingConstraints,
+  PhysicsValidation,
+  CostObjective,
+  TopoOptimizerOptions,
+  TopoProposal,
+  TopoTier,
+} from './topology';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
