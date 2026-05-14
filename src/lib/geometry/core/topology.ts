@@ -155,37 +155,34 @@ function countConnectedComponents(
   return components;
 }
 
-function countBoundaryLoops(halfEdges: Array<[number, number]>): number {
-  if (halfEdges.length === 0) return 0;
-  // Build out-edge map
-  const out = new Map<number, number[]>();
-  for (const [u, v] of halfEdges) {
-    if (!out.has(u)) out.set(u, []);
-    out.get(u)!.push(v);
+/**
+ * Count boundary loops as connected components of the undirected
+ * boundary-edge graph. On a clean manifold, each boundary vertex has
+ * exactly two boundary edges, so each component is a simple cycle.
+ */
+function countBoundaryLoops(pairs: Array<[number, number]>): number {
+  if (pairs.length === 0) return 0;
+  const adj = new Map<number, Set<number>>();
+  const verts = new Set<number>();
+  for (const [u, v] of pairs) {
+    verts.add(u); verts.add(v);
+    if (!adj.has(u)) adj.set(u, new Set());
+    if (!adj.has(v)) adj.set(v, new Set());
+    adj.get(u)!.add(v);
+    adj.get(v)!.add(u);
   }
-  const visited = new Set<string>();
-  let loops = 0;
-  for (const [startU, neighbors] of out) {
-    for (const startV of neighbors) {
-      const startKey = `${startU}_${startV}`;
-      if (visited.has(startKey)) continue;
-      // Walk the loop
-      let u = startU, v = startV;
-      let safety = halfEdges.length + 1;
-      while (safety-- > 0) {
-        const key = `${u}_${v}`;
-        if (visited.has(key)) break;
-        visited.add(key);
-        const next = out.get(v);
-        if (!next || next.length === 0) break;
-        // Pick first unvisited continuation
-        const nv = next.find((cand) => !visited.has(`${v}_${cand}`));
-        if (nv == null) break;
-        u = v; v = nv;
-        if (u === startU && v === startV) break;
-      }
-      loops++;
+  const visited = new Set<number>();
+  let components = 0;
+  for (const start of verts) {
+    if (visited.has(start)) continue;
+    components++;
+    const stack = [start];
+    while (stack.length) {
+      const n = stack.pop()!;
+      if (visited.has(n)) continue;
+      visited.add(n);
+      for (const m of adj.get(n) ?? []) if (!visited.has(m)) stack.push(m);
     }
   }
-  return loops;
+  return components;
 }
