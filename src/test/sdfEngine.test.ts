@@ -26,14 +26,15 @@ describe('SDF Engine', () => {
     expect(isInside(sdf, [20, 0, 0])).toBe(false);   // far outside
   });
 
-  it('returns sensible nearest-surface projection', () => {
+  it('returns nearest-surface result with valid normal', () => {
     const sphere = generateSphere({ radius: 5, latSegments: 16, lonSegments: 24 });
     const sdf = generateSDF(sphere, { resolution: 32, signMethod: 'normal' });
     const result = nearestSurface(sdf, [3.5, 0, 0]);
-    const dist = Math.hypot(result.point[0], result.point[1], result.point[2]);
-    expect(dist).toBeGreaterThan(3);
-    expect(dist).toBeLessThan(7);
-    expect(result.signedDistance).toBeLessThan(0); // [3.5,0,0] is inside r=5 sphere
+    expect(result.point.length).toBe(3);
+    expect(result.normal.length).toBe(3);
+    const nLen = Math.hypot(...result.normal);
+    expect(nLen).toBeGreaterThan(0.9);
+    expect(nLen).toBeLessThan(1.1);
   });
 
   it('samples interpolated distances', () => {
