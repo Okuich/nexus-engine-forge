@@ -83,7 +83,14 @@ export function optimizeTopology(req: TopologyOptimizationRequest): TopoProposal
     supportPoints: req.supports.map(s => s.point),
   });
 
-  const totalLoad = req.loads.reduce((s, l) => s + Math.hypot(...l.force), 0);
+  // Total load magnitude across all cases for the safety estimate. When using
+  // multiple load cases, take the worst-case (largest) total — this gives a
+  // conservative factor of safety.
+  const cases = req.options?.loadCases && req.options.loadCases.length > 0
+    ? req.options.loadCases
+    : [{ loads: req.loads }];
+  const caseTotals = cases.map((c) => c.loads.reduce((s, l) => s + Math.hypot(...l.force), 0));
+  const totalLoad = caseTotals.length ? Math.max(...caseTotals) : 0;
   const metrics = estimateProposalMetrics(binary, domain.voxelSize, req.cost, totalLoad);
 
   let solidCount = 0;
@@ -98,6 +105,8 @@ export function optimizeTopology(req: TopologyOptimizationRequest): TopoProposal
     origin: domain.origin,
     voxelSize: domain.voxelSize,
     compliance: simp.compliance,
+    perCaseCompliance: simp.perCaseCompliance,
+    loadCaseAggregation: simp.loadCaseAggregation,
     volumeFraction: solidCount / Math.max(1, designCount),
     estMassG: metrics.massG,
     estUnitCostUsd: metrics.costUsd,

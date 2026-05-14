@@ -17,6 +17,8 @@
 import type {
   LoadCondition,
   SupportCondition,
+  LoadCase,
+  LoadCaseAggregation,
   TopoOptimizerOptions,
   TopoIterationState,
   V3,
@@ -27,9 +29,20 @@ import { applyConstraintPenalties, type PenaltyDiagnostics } from './constraintP
 interface SimpRunResult {
   density: Float32Array;
   compliance: number;
+  /** Per-case compliance breakdown for the final iteration. */
+  perCaseCompliance: number[];
+  loadCaseAggregation: LoadCaseAggregation;
   iterations: number;
   converged: boolean;
-  history: number[]; // compliance per iter
+  history: number[]; // aggregated compliance per iter
+}
+
+interface ProjectedCase {
+  loadVoxels: number[];
+  loadMags: number[];
+  supportSet: Set<number>;
+  weight: number;
+  name?: string;
 }
 
 const EMIN = 1e-3; // stiffness floor for void cells
@@ -184,26 +197,55 @@ export function runSIMP(
     for (let i = 0; i < N; i++) density[i] = domain.designMask[i] ? targetVol : 0;
   }
 
-  // Project loads / supports onto voxels
-  const loadVoxels: number[] = [];
-  const loadMags: number[] = [];
-  for (const ld of loads) {
-    const { idx } = worldToVoxel(domain, ld.point);
-    if (idx >= 0) {
-      loadVoxels.push(idx);
-      loadMags.push(Math.hypot(...ld.force));
+  // ─── Build per-case projected loads/supports ────────────────────────────
+  const aggregation: LoadCaseAggregation = options.loadCaseAggregation ?? 'weighted-sum';
+  const ksRho = options.ksRho ?? 8;
+
+  const rawCases: LoadCase[] = options.loadCases && options.loadCases.length > 0
+    ? options.loadCases
+    : [{ name: 'default', loads, supports, weight: 1 }];
+
+  const cases: ProjectedCase[] = [];
+  for (const lc of rawCases) {
+    const lvox: number[] = [];
+    const lmag: number[] = [];
+    for (const ld of lc.loads) {
+      const { idx } = worldToVoxel(domain, ld.point);
+      if (idx >= 0) {
+        lvox.push(idx);
+        lmag.push(Math.hypot(...ld.force));
+      }
     }
+    const sset = new Set<number>();
+    const sps = lc.supports ?? supports;
+    for (const sp of sps) {
+      const { idx } = worldToVoxel(domain, sp.point);
+      if (idx >= 0) sset.add(idx);
+    }
+    if (lvox.length === 0 || sset.size === 0) continue;
+    cases.push({
+      loadVoxels: lvox,
+      loadMags: lmag,
+      supportSet: sset,
+      weight: lc.weight ?? 1,
+      name: lc.name,
+    });
   }
-  const supportSet = new Set<number>();
-  for (const sp of supports) {
-    const { idx } = worldToVoxel(domain, sp.point);
-    if (idx >= 0) supportSet.add(idx);
-  }
-  if (loadVoxels.length === 0 || supportSet.size === 0) {
-    return { density, compliance: Infinity, iterations: 0, converged: false, history: [] };
+
+  if (cases.length === 0) {
+    return {
+      density,
+      compliance: Infinity,
+      perCaseCompliance: [],
+      loadCaseAggregation: aggregation,
+      iterations: 0,
+      converged: false,
+      history: [],
+    };
   }
 
   const history: number[] = [];
+  let lastPerCase: number[] = new Array(cases.length).fill(0);
   let prev = new Float32Array(density);
   let converged = false;
   let iter = 0;
@@ -212,26 +254,64 @@ export function runSIMP(
     const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
     if (elapsed > budget) break;
 
-    const flow = estimateForceFlow(density, domain, loadVoxels, loadMags, supportSet, penalty);
+    // Per-case force-flow + per-case compliance + per-case raw sensitivity
+    const perCaseSens: Float32Array[] = [];
+    const perCaseCompliance: number[] = [];
+    let lastFlow: Float32Array | undefined;
 
-    // Sensitivity ∂c/∂ρ ≈ −p · ρ^(p−1) · u² where u = flow
-    const sens = new Float32Array(N);
-    let compliance = 0;
-    for (let i = 0; i < N; i++) {
-      const u2 = flow[i] * flow[i];
-      const rho = density[i] + EMIN;
-      compliance += Math.pow(rho, penalty) * u2;
-      sens[i] = -penalty * Math.pow(rho, penalty - 1) * u2;
+    for (const c of cases) {
+      const flow = estimateForceFlow(density, domain, c.loadVoxels, c.loadMags, c.supportSet, penalty);
+      lastFlow = flow;
+      const sens_i = new Float32Array(N);
+      let comp_i = 0;
+      for (let i = 0; i < N; i++) {
+        const u2 = flow[i] * flow[i];
+        const rho = density[i] + EMIN;
+        comp_i += Math.pow(rho, penalty) * u2;
+        sens_i[i] = -penalty * Math.pow(rho, penalty - 1) * u2;
+      }
+      perCaseSens.push(sens_i);
+      perCaseCompliance.push(comp_i);
     }
-    history.push(compliance);
 
-    // Optional manufacturing/physics penalty terms.
+    // ─── Aggregate compliance + sensitivities across cases ────────────────
+    const sens = new Float32Array(N);
+    let aggCompliance = 0;
+
+    if (aggregation === 'ks') {
+      // KS soft-max: c_agg = (1/ρ) ln Σ exp(ρ · w_i · c_i − M) + M/ρ
+      // ∂c_agg/∂ρv = Σ s_i · w_i · sens_i, with s_i = softmax(ρ · w_i · c_i)
+      const scaled = cases.map((c, i) => ksRho * c.weight * perCaseCompliance[i]);
+      const M = Math.max(...scaled);
+      let denom = 0;
+      const exps = scaled.map((s) => { const e = Math.exp(s - M); denom += e; return e; });
+      const softmax = exps.map((e) => e / denom);
+      aggCompliance = (Math.log(denom) + M) / ksRho;
+      for (let k = 0; k < cases.length; k++) {
+        const w = softmax[k] * cases[k].weight;
+        const s_k = perCaseSens[k];
+        for (let i = 0; i < N; i++) sens[i] += w * s_k[i];
+      }
+    } else {
+      // weighted-sum
+      for (let k = 0; k < cases.length; k++) {
+        aggCompliance += cases[k].weight * perCaseCompliance[k];
+        const w = cases[k].weight;
+        const s_k = perCaseSens[k];
+        for (let i = 0; i < N; i++) sens[i] += w * s_k[i];
+      }
+    }
+
+    history.push(aggCompliance);
+    lastPerCase = perCaseCompliance;
+
+    // Optional manufacturing/physics penalty terms (uses last case's flow).
     let penaltyDiagnostics: PenaltyDiagnostics | undefined;
     let augmentedSens = sens;
     if (options.constraints) {
       const res = applyConstraintPenalties(sens, density, domain.designMask, domain.dims, {
         ...options.constraints,
-        flow,
+        flow: lastFlow,
         voxelSizeMm: options.constraints.voxelSizeMm ?? domain.voxelSize,
       });
       augmentedSens = new Float32Array(res.sensitivity);
@@ -249,7 +329,8 @@ export function runSIMP(
     options.onIteration?.({
       iteration: iter,
       density: new Float32Array(density),
-      compliance,
+      compliance: aggCompliance,
+      perCaseCompliance: perCaseCompliance.slice(),
       volumeFraction: updated.vol,
       change,
       elapsedMs: elapsed,
@@ -260,5 +341,13 @@ export function runSIMP(
   }
 
   const lastCompliance = history.length ? history[history.length - 1] : Infinity;
-  return { density, compliance: lastCompliance, iterations: iter + 1, converged, history };
+  return {
+    density,
+    compliance: lastCompliance,
+    perCaseCompliance: lastPerCase,
+    loadCaseAggregation: aggregation,
+    iterations: iter + 1,
+    converged,
+    history,
+  };
 }

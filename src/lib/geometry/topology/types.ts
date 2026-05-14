@@ -59,6 +59,25 @@ export interface CostObjective {
   targetUnitCostUsd?: number;
 }
 
+/**
+ * A named bundle of simultaneous loads (and optional support override) used in
+ * multi-load-case topology optimization. Each iteration solves the force-flow
+ * surrogate for every case and aggregates compliances and sensitivities.
+ */
+export interface LoadCase {
+  /** Optional label for diagnostics & UI. */
+  name?: string;
+  /** Loads applied together in this case. */
+  loads: LoadCondition[];
+  /** Per-case support override; falls back to top-level supports when absent. */
+  supports?: SupportCondition[];
+  /** Aggregation weight (default 1). */
+  weight?: number;
+}
+
+/** How per-case compliances are merged into the scalar objective. */
+export type LoadCaseAggregation = 'weighted-sum' | 'ks';
+
 export interface TopoOptimizerOptions {
   /** Voxel resolution along longest axis. Default 48. */
   resolution?: number;
@@ -83,12 +102,26 @@ export interface TopoOptimizerOptions {
    * sensitivity field each SIMP step. See `constraintPenalties.ts`.
    */
   constraints?: import('./constraintPenalties').ConstraintPenaltyOptions;
+  /**
+   * Multiple load cases to optimize against. When provided, the top-level
+   * `loads` argument is ignored (use `loadCases` exclusively). Each case
+   * produces an independent force-flow + per-cell sensitivity which is then
+   * aggregated. When omitted, the top-level loads form a single implicit case.
+   */
+  loadCases?: LoadCase[];
+  /** Aggregation strategy for per-case compliances. Default 'weighted-sum'. */
+  loadCaseAggregation?: LoadCaseAggregation;
+  /** KS soft-max sharpness (only used when aggregation = 'ks'). Default 8. */
+  ksRho?: number;
 }
 
 export interface TopoIterationState {
   iteration: number;
   density: Float32Array;
+  /** Aggregated compliance under the chosen aggregation strategy. */
   compliance: number;
+  /** Per-load-case compliance breakdown (matches `loadCases` order). */
+  perCaseCompliance?: number[];
   volumeFraction: number;
   change: number;
   elapsedMs: number;
@@ -103,8 +136,12 @@ export interface TopoProposal {
   dims: [number, number, number];
   origin: V3;
   voxelSize: number;
-  /** Final compliance (lower = stiffer). */
+  /** Final aggregated compliance (lower = stiffer). */
   compliance: number;
+  /** Per-load-case compliance breakdown (matches `loadCases` order). */
+  perCaseCompliance?: number[];
+  /** Aggregation strategy used for `compliance`. */
+  loadCaseAggregation?: LoadCaseAggregation;
   /** Achieved volume fraction. */
   volumeFraction: number;
   /** Estimated mass in grams. */
