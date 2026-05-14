@@ -88,3 +88,12 @@ export type {
   SerializedKDTree,
   SerializedKind,
 } from './serialization';
+
+// ── Benchmark runner ──────────────────────────────────────────
+export { runSpatialBenchmark, formatReport as formatSpatialBenchmark } from './benchmark';
+export type {
+  BenchmarkOptions as SpatialBenchmarkOptions,
+  BenchmarkReport as SpatialBenchmarkReport,
+  BenchmarkCase as SpatialBenchmarkCase,
+  LatencyStats as SpatialLatencyStats,
+} from './benchmark';
