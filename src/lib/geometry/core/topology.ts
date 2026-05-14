@@ -69,7 +69,7 @@ export function analyzeTopology(input: RawMesh): TopologyReport {
     usedVertices.add(a); usedVertices.add(b); usedVertices.add(c);
 
     for (const [u, v] of [[a, b], [b, c], [c, a]] as Array<[number, number]>) {
-      const key = edgeHash(u, v);
+      const key = edgeKey(u, v);
       const arr = edgeFaces.get(key);
       if (arr) arr.push(f);
       else edgeFaces.set(key, [f]);
