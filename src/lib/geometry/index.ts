@@ -34,6 +34,9 @@ export {
   computeSharpness,
   extractAdvancedFeatures,
   featureColumns,
+  featureColumnsFor,
+  extractSDFFeatures,
+  SDF_FEATURE_COLUMNS,
 } from './features';
 export type {
   VertexCurvature,
@@ -47,6 +50,9 @@ export type {
   AdvancedFeatureOptions,
   AdvancedFeatureSet,
   FeatureColumn,
+  SDFFeatureOptions,
+  SDFFeatureSet,
+  SDFFeatureColumn,
 } from './features';
 
 // ── Math primitives ──────────────────────────────────────────────
