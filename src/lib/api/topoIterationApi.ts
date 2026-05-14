@@ -44,10 +44,9 @@ export interface IterationSnapshot {
   previewDims?: [number, number, number];
   /** Constraint-penalty diagnostics if penalties are enabled. */
   constraints?: {
-    overhang?: number;
-    minFeature?: number;
-    stress?: number;
-    total?: number;
+    overhangViolations: number;
+    minFeatureViolations: number;
+    stressViolations: number;
   };
 }
 
@@ -70,10 +69,9 @@ function mapDiagnostics(
 ): IterationSnapshot['constraints'] {
   if (!d) return undefined;
   return {
-    overhang: d.overhang,
-    minFeature: d.minFeature,
-    stress: d.stress,
-    total: d.total,
+    overhangViolations: d.overhangViolations,
+    minFeatureViolations: d.minFeatureViolations,
+    stressViolations: d.stressViolations,
   };
 }
 
