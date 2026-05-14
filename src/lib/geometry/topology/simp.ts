@@ -22,6 +22,7 @@ import type {
   V3,
 } from './types';
 import { worldToVoxel, type VoxelDomain } from './voxelizer';
+import { applyConstraintPenalties, type PenaltyDiagnostics } from './constraintPenalties';
 
 interface SimpRunResult {
   density: Float32Array;
