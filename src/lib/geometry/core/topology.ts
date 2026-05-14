@@ -9,8 +9,12 @@
  */
 
 import type { RawMesh } from '../types';
-import { edgeHash } from '../meshMath';
 import { normalizeIndexed } from './meshGenerator';
+
+/** Stable undirected-edge string key. */
+function edgeKey(a: number, b: number): string {
+  return a < b ? `${a}_${b}` : `${b}_${a}`;
+}
 
 export interface TopologyReport {
   /** Vertex count (unique positions referenced). */
