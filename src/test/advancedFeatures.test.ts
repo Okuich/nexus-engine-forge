@@ -9,14 +9,15 @@ import {
 } from '@/lib/geometry/features';
 
 describe('features — curvature', () => {
-  it('plane has near-zero Gaussian and mean curvature', () => {
+  it('plane interior verts have near-zero mean & Gaussian curvature', () => {
     const m = generatePlane({ widthSegments: 4, heightSegments: 4 });
     const c = computeCurvature(m);
-    const interiorMeans = c.perVertex.map((v) => Math.abs(v.mean));
-    const maxMean = Math.max(...interiorMeans);
-    expect(maxMean).toBeLessThan(1e-3);
-    const gaussians = c.perVertex.map((v) => Math.abs(v.gaussian));
-    expect(Math.max(...gaussians.slice(0, 9))).toBeLessThan(10); // boundary noise tolerated
+    // Interior vertices on a 5×5 grid: indices [6,7,8,11,12,13,16,17,18]
+    const interior = [6, 7, 8, 11, 12, 13, 16, 17, 18];
+    for (const i of interior) {
+      expect(Math.abs(c.perVertex[i].mean)).toBeLessThan(1e-6);
+      expect(Math.abs(c.perVertex[i].gaussian)).toBeLessThan(1e-6);
+    }
   });
 
   it('sphere has positive Gaussian curvature ≈ 1/r²', () => {
