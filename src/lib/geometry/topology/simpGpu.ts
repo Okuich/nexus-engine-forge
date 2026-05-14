@@ -21,6 +21,7 @@
  */
 import type { LoadCondition, SupportCondition, TopoOptimizerOptions, TopoIterationState } from './types';
 import { worldToVoxel, type VoxelDomain } from './voxelizer';
+import type { PenaltyDiagnostics } from './constraintPenalties';
 
 export class WebGPUUnavailableError extends Error {
   constructor(reason: string) { super(`WebGPU unavailable: ${reason}`); this.name = 'WebGPUUnavailableError'; }
