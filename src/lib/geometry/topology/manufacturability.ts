@@ -60,7 +60,8 @@ function erode(binary: Uint8Array, dims: [number, number, number]): Uint8Array {
     let keep = true;
     for (const [di, dj, dk] of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]) {
       const ii = i + di, jj = j + dj, kk = k + dk;
-      if (ii < 0 || jj < 0 || kk < 0 || ii >= nx || jj >= ny || kk >= nz) { keep = false; break; }
+      // Treat out-of-bounds as solid so domain-boundary voxels survive.
+      if (ii < 0 || jj < 0 || kk < 0 || ii >= nx || jj >= ny || kk >= nz) continue;
       if (!binary[idxOf(ii, jj, kk, dims)]) { keep = false; break; }
     }
     out[idx] = keep ? 1 : 0;
