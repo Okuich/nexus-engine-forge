@@ -59,8 +59,8 @@ export function analyzeTopology(input: RawMesh): TopologyReport {
 
   // edgeKey -> [faceA, faceB?, ...]
   const edgeFaces = new Map<string, number[]>();
-  // For boundary loop walking: directed half-edges on boundary
-  const boundaryHalfEdges: Array<[number, number]> = [];
+  // Boundary edges as undirected vertex pairs
+  const boundaryPairs: Array<[number, number]> = [];
 
   for (let f = 0; f < faces; f++) {
     const a = indices[f * 3];
@@ -83,7 +83,7 @@ export function analyzeTopology(input: RawMesh): TopologyReport {
     if (fs.length === 1) {
       boundaryEdges++;
       const [u, v] = key.split('_').map(Number);
-      boundaryHalfEdges.push([u, v]);
+      boundaryPairs.push([u, v]);
     } else if (fs.length === 2) manifoldEdges++;
     else nonManifoldEdges++;
   }
