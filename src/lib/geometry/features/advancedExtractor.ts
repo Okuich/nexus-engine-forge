@@ -132,11 +132,25 @@ export function extractAdvancedFeatures(
     if (isCrease) creaseFaces++;
   }
 
+  // ─── Optional SDF integration ─────────────────────────────────
+  let sdf: SDFFeatureSet | null = null;
+  if (opts.sdf) {
+    const sdfOpts: SDFFeatureOptions = typeof opts.sdf === 'object' ? opts.sdf : {};
+    sdf = extractSDFFeatures(mesh, sdfOpts);
+    // Append the 4 SDF columns to each row. SDF face count must match.
+    if (sdf.matrix.length === faces) {
+      for (let f = 0; f < faces; f++) {
+        matrix[f].push(...sdf.matrix[f]);
+      }
+    }
+  }
+
   return {
     matrix,
     curvature,
     thickness,
     sharpness,
+    sdf,
     stats: {
       faces,
       meanGaussian: faces ? sumGauss / faces : 0,
@@ -144,6 +158,7 @@ export function extractAdvancedFeatures(
       meanThickness: thkCount ? sumThk / thkCount : 0,
       creaseRatio: faces ? creaseFaces / faces : 0,
       sharpnessMean: faces ? sumSharp / faces : 0,
+      ...(sdf ? { sdf: sdf.stats } : {}),
     },
   };
 }
