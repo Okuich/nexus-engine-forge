@@ -78,6 +78,11 @@ export interface TopoOptimizerOptions {
   resumeFrom?: Float32Array;
   /** Per-iteration callback for live previews. */
   onIteration?: (state: TopoIterationState) => void;
+  /**
+   * Configurable manufacturing/physics constraint penalties added to the
+   * sensitivity field each SIMP step. See `constraintPenalties.ts`.
+   */
+  constraints?: import('./constraintPenalties').ConstraintPenaltyOptions;
 }
 
 export interface TopoIterationState {
@@ -87,6 +92,8 @@ export interface TopoIterationState {
   volumeFraction: number;
   change: number;
   elapsedMs: number;
+  /** Diagnostics from constraint-penalty pass (if enabled). */
+  penaltyDiagnostics?: import('./constraintPenalties').PenaltyDiagnostics;
 }
 
 export interface TopoProposal {
