@@ -16,22 +16,16 @@ describe('SIMP constraint penalties', () => {
   it('overhang penalty pushes density away from unsupported cells', () => {
     const dims: [number, number, number] = [4, 4, 4];
     const N = 4 * 4 * 4;
-    const density = new Float32Array(N).fill(0.5);
+    const density = new Float32Array(N);
+    const floater = 1 + 1 * 4 + 2 * 16; // (1,1,2) — nothing beneath
+    density[floater] = 1.0;
     const sens = new Float32Array(N).fill(-1);
     const mask = new Uint8Array(N).fill(1);
     const { sensitivity, diagnostics } = applyConstraintPenalties(sens, density, mask, dims, {
       manufacturing: { process: 'fdm_3d_print', pullAxis: 'z', maxOverhangDeg: 0 },
       weights: { overhang: 1.0 },
     });
-    // Cells above the build plate (k>0) should have *increased* sensitivity (less negative).
-    let bumpedAbove = 0;
-    for (let k = 1; k < 4; k++) {
-      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
-        const idx = i + j * 4 + k * 16;
-        if (sensitivity[idx] > sens[idx]) bumpedAbove++;
-      }
-    }
-    expect(bumpedAbove).toBeGreaterThan(0);
+    expect(sensitivity[floater]).toBeGreaterThan(sens[floater]);
     expect(diagnostics.overhangViolations).toBeGreaterThan(0);
   });
 
