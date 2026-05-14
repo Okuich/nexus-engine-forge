@@ -284,16 +284,20 @@ function nearestFaceDistance(
   p: Vec3,
   faces: FaceInfo[],
 ): { dist: number; normal: Vec3 } {
-  // O(F) brute-force — adequate for sampled fidelity (samples ≪ faces·F).
-  // For very large meshes the caller should reduce maxSamples.
+  // O(F) brute-force using centroid distance to pick the nearest face,
+  // then report point-to-plane distance for that face. Adequate for sampled
+  // fidelity (samples ≪ faces·F). For very large meshes reduce maxSamples.
   let best = Infinity;
-  let bestN: Vec3 = [0, 0, 1];
+  let bestIdx = 0;
   for (let i = 0; i < faces.length; i++) {
     const f = faces[i];
     const d = (p[0]-f.centroid[0])**2 + (p[1]-f.centroid[1])**2 + (p[2]-f.centroid[2])**2;
-    if (d < best) { best = d; bestN = f.normal; }
+    if (d < best) { best = d; bestIdx = i; }
   }
-  return { dist: Math.sqrt(best), normal: bestN };
+  const f = faces[bestIdx];
+  const dx = p[0]-f.centroid[0], dy = p[1]-f.centroid[1], dz = p[2]-f.centroid[2];
+  const planeDist = Math.abs(dx*f.normal[0] + dy*f.normal[1] + dz*f.normal[2]);
+  return { dist: planeDist, normal: f.normal };
 }
 
 // Deterministic mulberry32 for reproducible sampling.
