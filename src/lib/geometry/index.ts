@@ -231,6 +231,42 @@ export type {
   ManifoldCapabilityFlag,
 } from './manifold';
 
+// ── Topology reasoning extension layer (interface only) ────────
+export {
+  TopologyReasoningEngine,
+  topologyRegistry,
+  makeTopologyCapabilities,
+  stubTopologyBackend,
+  TopologyNotImplementedError,
+  TopologyBackendError,
+} from './topologyReasoning';
+export type {
+  TopologyBackend,
+  TopologyCapabilities,
+  GraphKind,
+  GraphFlavor,
+  GraphDescriptor,
+  NodeRef,
+  EdgeRef,
+  CentralityKind,
+  CommunityAlgorithm,
+  GraphIsomorphismKind,
+  PathKind,
+  FlowKind,
+  GraphInvariants,
+  CommunityPartition,
+  CentralityScores,
+  PathResult,
+  FlowResult,
+  IsomorphismResult,
+  MotifQuery,
+  MotifMatch,
+  GraphTransform,
+  TopologyResult,
+  TopologyDispatch,
+  TopologyCapabilityFlag,
+} from './topologyReasoning';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
