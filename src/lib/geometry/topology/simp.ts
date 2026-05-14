@@ -226,7 +226,7 @@ export function runSIMP(
 
     const filtered = sensitivityFilter(sens, density, domain.dims, filterR);
     const updated = ocUpdate(density, filtered, domain.designMask, targetVol);
-    density = updated.density;
+    density = new Float32Array(updated.density);
 
     let change = 0;
     for (let i = 0; i < N; i++) change = Math.max(change, Math.abs(density[i] - prev[i]));

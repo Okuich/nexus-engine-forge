@@ -132,8 +132,8 @@ describe('Topology Optimization Pipeline', () => {
     const box = generateBox({ width: 16, height: 8, depth: 8 });
     const req = {
       mesh: box,
-      loads: [{ point: [7, 4, 4], force: [0, -100, 0] }],
-      supports: [{ point: [-7, 4, 4] }],
+      loads: [{ point: [7, 4, 4] as [number, number, number], force: [0, -100, 0] as [number, number, number] }],
+      supports: [{ point: [-7, 4, 4] as [number, number, number] }],
       manufacturing: { process: 'cnc_milling' as const, minFeatureMm: 1 },
       physics: validPhysics,
       cost: { material: 'aluminum_6061' as const },
