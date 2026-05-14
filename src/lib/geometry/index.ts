@@ -23,6 +23,28 @@ export type {
   SpatialIndex,
 } from './spatial';
 
+// ── Advanced ML feature extraction ──────────────────────────────
+export {
+  computeCurvature,
+  computeThickness,
+  computeSharpness,
+  extractAdvancedFeatures,
+  featureColumns,
+} from './features';
+export type {
+  VertexCurvature,
+  FaceCurvature,
+  CurvatureField,
+  ThicknessOptions,
+  ThicknessResult,
+  EdgeSharpness,
+  SharpnessOptions,
+  SharpnessReport,
+  AdvancedFeatureOptions,
+  AdvancedFeatureSet,
+  FeatureColumn,
+} from './features';
+
 // ── Math primitives ──────────────────────────────────────────────
 export {
   triangleArea,
