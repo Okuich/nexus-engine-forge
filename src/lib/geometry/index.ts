@@ -76,6 +76,28 @@ export { MeshValidationError, MeshErrorCode } from './types';
 // ── Geometry optimization engine ────────────────────────────────
 export * from './optimization';
 
+// ── Signed Distance Field engine ────────────────────────────────
+export {
+  generateSDF,
+  generateSDFGPU,
+  generateSDFGated,
+  hasWebGPU,
+  sampleSDF,
+  isInside,
+  nearestSurface,
+  gradient,
+  checkSDFGate,
+  SDFGateError,
+} from './sdf';
+export type {
+  SDFGenerationOptions,
+  SDFGrid,
+  NearestSurfaceResult,
+  SDFTier,
+  SDFGatingContext,
+  SDFGatingDecision,
+} from './sdf';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
