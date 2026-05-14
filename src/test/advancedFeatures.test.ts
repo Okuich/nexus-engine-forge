@@ -64,10 +64,11 @@ describe('features — sharpness', () => {
     expect(s.maxSharpness).toBeLessThan(0.05);
   });
 
-  it('sharp cube edges are signed convex (positive)', () => {
+  it('non-coplanar cube edges are signed convex (positive)', () => {
     const s = computeSharpness(generateBox());
-    const convex = s.edges.filter((e) => e.signedSharpness > 0).length;
-    expect(convex).toBe(s.edges.length); // all box edges are convex
+    const sharpEdges = s.edges.filter((e) => e.sharpness > 0.1);
+    expect(sharpEdges.length).toBe(12);
+    expect(sharpEdges.every((e) => e.signedSharpness > 0)).toBe(true);
   });
 });
 
