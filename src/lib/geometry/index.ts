@@ -13,6 +13,16 @@ export { buildAdjacencyGraph, connectedComponents } from './adjacencyGraph';
 // ── Computational geometry core layer ────────────────────────────
 export * from './core';
 
+// ── Spatial acceleration engine (KD-tree, BVH, Octree) ──────────
+export { KDTree, Octree, buildSpatialIndex } from './spatial';
+export type {
+  KDQueryResult,
+  KDTreeOptions,
+  OctreeOptions,
+  SpatialWorkload,
+  SpatialIndex,
+} from './spatial';
+
 // ── Math primitives ──────────────────────────────────────────────
 export {
   triangleArea,
