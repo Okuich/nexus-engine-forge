@@ -170,6 +170,35 @@ export type {
   CollisionGatingDecision,
 } from './collision';
 
+// ── Symbolic / algebraic geometry engine (interface only) ───────
+export {
+  SymbolicEngine,
+  symbolicRegistry,
+  makeCapabilities,
+  stubBackend,
+  SymbolicNotImplementedError,
+  SymbolicBackendError,
+} from './symbolic';
+export type {
+  SymbolicBackend,
+  SymbolicCapabilities,
+  SymbolicScalar,
+  SymbolicExpr,
+  SymbolicSymbol,
+  SymbolBinding,
+  SymbolicPrimitive,
+  SymbolicPrimitiveKind,
+  SymbolicConstraint,
+  ConstraintKind,
+  BooleanOp,
+  DifferentialOp,
+  GeometricPredicate,
+  SymbolicResult,
+  SolveOutcome,
+  DispatchOptions,
+  CapabilityFlag,
+} from './symbolic';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
