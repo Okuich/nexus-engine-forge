@@ -11,8 +11,15 @@
 export { optimizeTopology, refineTopology } from './optimizer';
 export type { TopologyOptimizationRequest } from './optimizer';
 export { runSIMP } from './simp';
-export { runSIMPGPU, runSIMPAuto, hasWebGPUForSIMP, WebGPUUnavailableError } from './simpGpu';
-export type { SimpGpuRunResult } from './simpGpu';
+export {
+  runSIMPGPU,
+  runSIMPAuto,
+  hasWebGPUForSIMP,
+  WebGPUUnavailableError,
+  onSimpAutoTelemetry,
+  setSimpAutoConsoleLogging,
+} from './simpGpu';
+export type { SimpGpuRunResult, SimpAutoResult, SimpAutoTelemetry, SimpAutoTelemetryListener } from './simpGpu';
 export { runSIMPGPUMultiLoad, computeAggregationWeights } from './simpGpuMultiLoad';
 export type { SimpGpuMultiLoadResult } from './simpGpuMultiLoad';
 export { voxelizeForTopology, worldToVoxel } from './voxelizer';

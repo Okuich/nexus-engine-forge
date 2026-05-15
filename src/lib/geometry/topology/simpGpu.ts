@@ -537,6 +537,61 @@ export type SimpAutoResult =
       fallbackReason?: string;
     });
 
+// ─── Telemetry hook ────────────────────────────────────────────────────────
+
+/** Single telemetry record emitted at the end of every `runSIMPAuto` call. */
+export interface SimpAutoTelemetry {
+  backend: 'webgpu' | 'cpu';
+  fellBack: boolean;
+  fallbackReason?: string;
+  elapsedMs: number;
+  iterations: number;
+  converged: boolean;
+  /** voxel count (nx*ny*nz) — useful for correlating perf with problem size. */
+  domainSize: number;
+  /** Wall-clock timestamp (ms since epoch) when the run finished. */
+  timestamp: number;
+}
+
+export type SimpAutoTelemetryListener = (record: SimpAutoTelemetry) => void;
+
+const telemetryListeners = new Set<SimpAutoTelemetryListener>();
+
+/**
+ * Subscribe to telemetry from `runSIMPAuto`. Returns an unsubscribe fn.
+ * Listeners are invoked synchronously after the run completes; exceptions
+ * thrown by listeners are swallowed and `console.error`'d so a buggy
+ * subscriber cannot break the optimizer.
+ */
+export function onSimpAutoTelemetry(listener: SimpAutoTelemetryListener): () => void {
+  telemetryListeners.add(listener);
+  return () => telemetryListeners.delete(listener);
+}
+
+/** Toggle the built-in `console.debug` logger (off by default). */
+let consoleLoggerEnabled = false;
+export function setSimpAutoConsoleLogging(enabled: boolean): void {
+  consoleLoggerEnabled = enabled;
+}
+
+function emitTelemetry(record: SimpAutoTelemetry): void {
+  if (consoleLoggerEnabled) {
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[simpAuto] backend=${record.backend} fellBack=${record.fellBack}` +
+        (record.fallbackReason ? ` reason=${record.fallbackReason}` : '') +
+        ` elapsedMs=${record.elapsedMs.toFixed(1)} iters=${record.iterations}` +
+        ` converged=${record.converged} N=${record.domainSize}`,
+    );
+  }
+  for (const l of telemetryListeners) {
+    try { l(record); } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[simpAuto] telemetry listener threw', err);
+    }
+  }
+}
+
 /**
  * Run SIMP on the GPU when available, otherwise fall back to the CPU
  * implementation. The result always carries a discriminated `backend`
@@ -555,6 +610,22 @@ export async function runSIMPAuto(
   options: TopoOptimizerOptions & { forceCpu?: boolean } = {},
 ): Promise<SimpAutoResult> {
   const { forceCpu, ...simpOptions } = options;
+  const [nx, ny, nz] = domain.dims;
+  const domainSize = nx * ny * nz;
+
+  const finish = (result: SimpAutoResult): SimpAutoResult => {
+    emitTelemetry({
+      backend: result.backend,
+      fellBack: result.fellBack,
+      fallbackReason: result.fallbackReason,
+      elapsedMs: result.elapsedMs,
+      iterations: result.iterations,
+      converged: result.converged,
+      domainSize,
+      timestamp: Date.now(),
+    });
+    return result;
+  };
 
   const runCpu = async (
     fellBack: boolean,
@@ -573,10 +644,10 @@ export async function runSIMPAuto(
     };
   };
 
-  if (forceCpu) return runCpu(false);
+  if (forceCpu) return finish(await runCpu(false));
 
   if (!(await hasWebGPUForSIMP())) {
-    return runCpu(true, 'webgpu_unavailable');
+    return finish(await runCpu(true, 'webgpu_unavailable'));
   }
 
   try {
@@ -585,7 +656,7 @@ export async function runSIMPAuto(
     if (simpOptions.loadCases && simpOptions.loadCases.length > 0) {
       const { runSIMPGPUMultiLoad } = await import('./simpGpuMultiLoad');
       const ml = await runSIMPGPUMultiLoad(domain, simpOptions.loadCases, supports, simpOptions);
-      return {
+      return finish({
         density: ml.density,
         compliance: ml.compliance,
         iterations: ml.iterations,
@@ -594,14 +665,14 @@ export async function runSIMPAuto(
         backend: 'webgpu' as const,
         elapsedMs: ml.elapsedMs,
         fellBack: false,
-      };
+      });
     }
     const gpu = await runSIMPGPU(domain, loads, supports, simpOptions);
-    return { ...gpu, fellBack: false };
+    return finish({ ...gpu, fellBack: false });
   } catch (err) {
     const reason = err instanceof WebGPUUnavailableError
       ? err.message
       : `gpu_run_failed: ${err instanceof Error ? err.message : String(err)}`;
-    return runCpu(true, reason);
+    return finish(await runCpu(true, reason));
   }
 }
