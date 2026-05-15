@@ -1066,6 +1066,66 @@ export type Database = {
           },
         ]
       }
+      simplification_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          input_triangles: number | null
+          job_type: string
+          message: string | null
+          output_triangles: number | null
+          params: Json
+          progress: number
+          result_path: string | null
+          result_size_bytes: number | null
+          started_at: string | null
+          status: string
+          tenant_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input_triangles?: number | null
+          job_type?: string
+          message?: string | null
+          output_triangles?: number | null
+          params?: Json
+          progress?: number
+          result_path?: string | null
+          result_size_bytes?: number | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input_triangles?: number | null
+          job_type?: string
+          message?: string | null
+          output_triangles?: number | null
+          params?: Json
+          progress?: number
+          result_path?: string | null
+          result_size_bytes?: number | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       supplier_payouts: {
         Row: {
           amount_usd: number
