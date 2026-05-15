@@ -8,6 +8,25 @@
 import type { RawMesh } from './types';
 import { ensureWatertight, analyzeWatertightness, type SealOptions, type WatertightReport } from './meshWatertight';
 
+/**
+ * Combined pre-/post-seal payload delivered to {@link ExportOptions.onWatertightReport}.
+ *
+ * - `before`: analysis of the input mesh as received by the exporter.
+ * - `after`: analysis of the mesh actually serialized. Equals `before` (same
+ *   reference) when no sealing was performed.
+ * - `sealedLoops` / `skippedLoops` / `addedTriangles`: zero when no sealing ran.
+ * - `sealed`: true iff `ensureWatertight` was requested AND at least one loop
+ *   was actually closed.
+ */
+export interface WatertightReportPayload {
+  before: WatertightReport;
+  after: WatertightReport;
+  sealedLoops: number;
+  skippedLoops: number;
+  addedTriangles: number;
+  sealed: boolean;
+}
+
 export interface ExportOptions {
   /** Solid / object name. Default 'mesh'. */
   name?: string;
@@ -19,10 +38,10 @@ export interface ExportOptions {
    */
   ensureWatertight?: boolean | SealOptions;
   /**
-   * Optional sink that receives the watertightness report (post-seal if
-   * `ensureWatertight` is set, otherwise pre-export analysis).
+   * Optional sink that receives the combined pre-/post-seal watertightness
+   * report. Fires whenever this callback OR `ensureWatertight` is set.
    */
-  onWatertightReport?: (report: WatertightReport) => void;
+  onWatertightReport?: (payload: WatertightReportPayload) => void;
 }
 
 function preprocess(mesh: RawMesh, options: ExportOptions): RawMesh {
@@ -32,11 +51,26 @@ function preprocess(mesh: RawMesh, options: ExportOptions): RawMesh {
     : {};
   if (options.ensureWatertight) {
     const result = ensureWatertight(mesh, sealOpts);
-    options.onWatertightReport?.(result.after);
+    options.onWatertightReport?.({
+      before: result.before,
+      after: result.after,
+      sealedLoops: result.sealedLoops,
+      skippedLoops: result.skippedLoops,
+      addedTriangles: result.addedTriangles,
+      sealed: result.sealedLoops > 0,
+    });
     return result.mesh;
   }
-  // Report only.
-  options.onWatertightReport?.(analyzeWatertightness(mesh, sealOpts.weldEpsilon ?? 1e-6));
+  // Report-only path: before === after (no sealing performed).
+  const report = analyzeWatertightness(mesh, sealOpts.weldEpsilon ?? 1e-6);
+  options.onWatertightReport?.({
+    before: report,
+    after: report,
+    sealedLoops: 0,
+    skippedLoops: 0,
+    addedTriangles: 0,
+    sealed: false,
+  });
   return mesh;
 }
 
