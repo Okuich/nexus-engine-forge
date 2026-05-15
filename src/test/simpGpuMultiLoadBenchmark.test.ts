@@ -40,7 +40,7 @@ function loadCases(count: number): LoadCase[] {
     out.push({
       name: `lc${i}`,
       weight: 1,
-      forces: [{ point: [0.1, 0.5, 0.5], force: [Math.cos(θ), -1, Math.sin(θ)] }],
+      loads: [{ point: [0.1, 0.5, 0.5], force: [Math.cos(θ), -1, Math.sin(θ)] }],
     });
   }
   return out;
