@@ -537,6 +537,61 @@ export type SimpAutoResult =
       fallbackReason?: string;
     });
 
+// ─── Telemetry hook ────────────────────────────────────────────────────────
+
+/** Single telemetry record emitted at the end of every `runSIMPAuto` call. */
+export interface SimpAutoTelemetry {
+  backend: 'webgpu' | 'cpu';
+  fellBack: boolean;
+  fallbackReason?: string;
+  elapsedMs: number;
+  iterations: number;
+  converged: boolean;
+  /** voxel count (nx*ny*nz) — useful for correlating perf with problem size. */
+  domainSize: number;
+  /** Wall-clock timestamp (ms since epoch) when the run finished. */
+  timestamp: number;
+}
+
+export type SimpAutoTelemetryListener = (record: SimpAutoTelemetry) => void;
+
+const telemetryListeners = new Set<SimpAutoTelemetryListener>();
+
+/**
+ * Subscribe to telemetry from `runSIMPAuto`. Returns an unsubscribe fn.
+ * Listeners are invoked synchronously after the run completes; exceptions
+ * thrown by listeners are swallowed and `console.error`'d so a buggy
+ * subscriber cannot break the optimizer.
+ */
+export function onSimpAutoTelemetry(listener: SimpAutoTelemetryListener): () => void {
+  telemetryListeners.add(listener);
+  return () => telemetryListeners.delete(listener);
+}
+
+/** Toggle the built-in `console.debug` logger (off by default). */
+let consoleLoggerEnabled = false;
+export function setSimpAutoConsoleLogging(enabled: boolean): void {
+  consoleLoggerEnabled = enabled;
+}
+
+function emitTelemetry(record: SimpAutoTelemetry): void {
+  if (consoleLoggerEnabled) {
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[simpAuto] backend=${record.backend} fellBack=${record.fellBack}` +
+        (record.fallbackReason ? ` reason=${record.fallbackReason}` : '') +
+        ` elapsedMs=${record.elapsedMs.toFixed(1)} iters=${record.iterations}` +
+        ` converged=${record.converged} N=${record.domainSize}`,
+    );
+  }
+  for (const l of telemetryListeners) {
+    try { l(record); } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[simpAuto] telemetry listener threw', err);
+    }
+  }
+}
+
 /**
  * Run SIMP on the GPU when available, otherwise fall back to the CPU
  * implementation. The result always carries a discriminated `backend`
