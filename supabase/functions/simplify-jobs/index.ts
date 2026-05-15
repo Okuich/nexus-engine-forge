@@ -357,17 +357,19 @@ async function handle(req: Request): Promise<Response> {
       .single();
     if (error) return jsonResponse({ error: error.message }, 500);
 
+    const reqSpan = (req as unknown as { _span?: Span })._span;
     const work = processJob(
       data.id,
       user.id,
       parsed.data.mesh,
       parsed.data.jobType,
       parsed.data.params,
+      reqSpan,
     );
     if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work);
     else void work;
 
-    return jsonResponse({ jobId: data.id, status: 'queued' }, 202);
+    return jsonResponse({ jobId: data.id, status: 'queued', traceId: reqSpan?.traceId }, 202);
   }
 
   // ── status ────────────────────────────────────────────────────────────────
