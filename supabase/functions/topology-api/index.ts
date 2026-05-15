@@ -195,6 +195,9 @@ Deno.serve(async (req: Request) => {
       const result = evaluateCompliance(body);
       return json(envelope('compliance', result));
     }
+    if (path === '/stream') {
+      return await handleStream(req);
+    }
     return json({ error: `route not found: ${path}` }, 404);
   } catch (e) {
     if (e instanceof HttpError) {
