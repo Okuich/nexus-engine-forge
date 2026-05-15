@@ -23,8 +23,19 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3.23.8';
 import { evaluateCompliance, type ComplianceRequest as ComplianceRequestT } from './compliance.ts';
 import { buildIterationStream, streamHeaders, type StreamOptions } from './stream.ts';
+import {
+  analyzeFaceAdjacencyRequest,
+  findCriticalFacesRequest,
+  listBackends,
+  validateAnalyzeBody,
+  validateCriticalBody,
+} from './topology.ts';
 export { evaluateCompliance } from './compliance.ts';
 export { buildIterationStream } from './stream.ts';
+export {
+  analyzeFaceAdjacencyRequest,
+  findCriticalFacesRequest,
+} from './topology.ts';
 
 const SCHEMA = 'lovable.topology/v1' as const;
 
@@ -226,6 +237,37 @@ Deno.serve(async (req: Request) => {
     }
     if (path === '/stream') {
       return await handleStream(req);
+    }
+    if (path === '/analyzeFaceAdjacency') {
+      let raw: unknown;
+      try { raw = await req.json(); }
+      catch { throw new HttpError(400, 'invalid JSON body'); }
+      const inner = (raw && typeof raw === 'object' && '$schema' in (raw as object))
+        ? (raw as { data: unknown }).data : raw;
+      let parsed;
+      try { parsed = validateAnalyzeBody(inner); }
+      catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : 'invalid request');
+      }
+      const result = analyzeFaceAdjacencyRequest(parsed.graph, parsed.options);
+      return json(envelope('analyzeFaceAdjacency', result));
+    }
+    if (path === '/findCriticalFaces') {
+      let raw: unknown;
+      try { raw = await req.json(); }
+      catch { throw new HttpError(400, 'invalid JSON body'); }
+      const inner = (raw && typeof raw === 'object' && '$schema' in (raw as object))
+        ? (raw as { data: unknown }).data : raw;
+      let parsed;
+      try { parsed = validateCriticalBody(inner); }
+      catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : 'invalid request');
+      }
+      const result = findCriticalFacesRequest(parsed.graph, parsed.options);
+      return json(envelope('findCriticalFaces', result));
+    }
+    if (req.method === 'GET' && path === '/backends') {
+      return json(envelope('backends', { backends: listBackends() }));
     }
     return json({ error: `route not found: ${path}` }, 404);
   } catch (e) {
