@@ -288,6 +288,16 @@ export type {
   AnalyzeAdjacencyResult,
 } from './topologyReasoning';
 
+// ── One-call topology facades (RawMesh / FeatureSet → topology) ─
+export {
+  analyzeMeshFaceAdjacency,
+  findCriticalMeshFaces,
+  attachCriticalFaceScores,
+  analyzeMesh,
+  toFaceAdjacencyGraph,
+} from './topologyFacade';
+export type { FaceAdjacencyInput } from './topologyFacade';
+
 // ── Three.js integration (existing, backward-compatible) ────────
 export {
   extractGeometryFeatures,
