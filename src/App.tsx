@@ -70,6 +70,7 @@ function AppRoutes() {
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         <Route path="/fabrication" element={<ProtectedRoute><Fabrication /></ProtectedRoute>} />
         <Route path="/spatial-debug" element={<ProtectedRoute><SpatialDebug /></ProtectedRoute>} />
+        <Route path="/topology" element={<ProtectedRoute><TopologyOptimizer /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
