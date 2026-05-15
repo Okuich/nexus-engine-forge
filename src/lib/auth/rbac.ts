@@ -18,11 +18,7 @@ export type Permission =
   | 'ml:train'
   | 'ml:deploy'
   | 'ml:evaluate'
-  // Fabrication
-  | 'fab:view'
-  | 'fab:manage'
-  | 'fab:quote'
-  | 'fab:schedule'
+  // (Fabrication permissions removed — Fabrication OS is a separate platform)
   // Marketplace / RFQs
   | 'rfq:view'
   | 'rfq:create'
@@ -152,7 +148,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission[]> = {
   '/ml': ['ml:view'],
   '/pipeline': ['ml:train'],
   '/ml/evaluation': ['ml:evaluate'],
-  '/fabrication': ['fab:view'],
+  
   '/marketplace': ['rfq:view'],
   '/prospects': ['crm:view'],
   '/crm': ['crm:view'],
