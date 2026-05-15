@@ -18,11 +18,7 @@ export type Permission =
   | 'ml:train'
   | 'ml:deploy'
   | 'ml:evaluate'
-  // Fabrication
-  | 'fab:view'
-  | 'fab:manage'
-  | 'fab:quote'
-  | 'fab:schedule'
+  // (Fabrication permissions removed — Fabrication OS is a separate platform)
   // Marketplace / RFQs
   | 'rfq:view'
   | 'rfq:create'
@@ -58,7 +54,6 @@ const ROLE_PERMISSIONS: Record<AppRole, ReadonlySet<Permission>> = {
   owner: new Set<Permission>([
     'cad:view', 'cad:edit', 'cad:upload', 'cad:analyze',
     'ml:view', 'ml:train', 'ml:deploy', 'ml:evaluate',
-    'fab:view', 'fab:manage', 'fab:quote', 'fab:schedule',
     'rfq:view', 'rfq:create', 'rfq:quote', 'rfq:accept',
     'order:view', 'order:create', 'order:manage',
     'payment:view', 'payment:process',
@@ -71,7 +66,6 @@ const ROLE_PERMISSIONS: Record<AppRole, ReadonlySet<Permission>> = {
   admin: new Set<Permission>([
     'cad:view', 'cad:edit', 'cad:upload', 'cad:analyze',
     'ml:view', 'ml:train', 'ml:deploy', 'ml:evaluate',
-    'fab:view', 'fab:manage', 'fab:quote', 'fab:schedule',
     'rfq:view', 'rfq:create', 'rfq:quote', 'rfq:accept',
     'order:view', 'order:create', 'order:manage',
     'payment:view', 'payment:process',
@@ -101,7 +95,6 @@ const ROLE_PERMISSIONS: Record<AppRole, ReadonlySet<Permission>> = {
   ]),
 
   supplier: new Set<Permission>([
-    'fab:view', 'fab:manage', 'fab:quote', 'fab:schedule',
     'rfq:view', 'rfq:quote',
     'order:view',
     'payment:view',
@@ -152,7 +145,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission[]> = {
   '/ml': ['ml:view'],
   '/pipeline': ['ml:train'],
   '/ml/evaluation': ['ml:evaluate'],
-  '/fabrication': ['fab:view'],
+  
   '/marketplace': ['rfq:view'],
   '/prospects': ['crm:view'],
   '/crm': ['crm:view'],
