@@ -583,7 +583,81 @@ async function handle(req: Request): Promise<Response> {
     return jsonResponse({ batches: data });
   }
 
+  // ── API key management (JWT only — never expose to API-key callers) ─────
+  if (route.startsWith('keys')) {
+    if (principal.via !== 'jwt') return unauth('api keys cannot manage keys', 403);
+    const adminDb = admin();
+
+    if (route === 'keys' && req.method === 'GET') {
+      const { data, error } = await adminDb
+        .from('simplify_api_keys')
+        .select('id,name,prefix,scopes,last_used_at,expires_at,revoked_at,created_at')
+        .eq('user_id', principal.userId)
+        .order('created_at', { ascending: false });
+      if (error) return jsonResponse({ error: error.message }, 500);
+      return jsonResponse({ keys: data });
+    }
+
+    if (route === 'keys' && req.method === 'POST') {
+      const body = (await req.json().catch(() => ({}))) as {
+        name?: string;
+        scopes?: string[];
+        expiresInDays?: number;
+      };
+      if (!body.name || body.name.length > 80) {
+        return jsonResponse({ error: 'name required (≤80 chars)' }, 400);
+      }
+      const allowed: Scope[] = ['jobs:read', 'jobs:write'];
+      const scopes = (body.scopes ?? ['jobs:read', 'jobs:write']).filter(
+        (s): s is Scope => allowed.includes(s as Scope),
+      );
+      if (scopes.length === 0) return jsonResponse({ error: 'at least one scope required' }, 400);
+
+      const minted = await mintApiKey();
+      const expiresAt = body.expiresInDays
+        ? new Date(Date.now() + body.expiresInDays * 86_400_000).toISOString()
+        : null;
+      const { data, error } = await adminDb
+        .from('simplify_api_keys')
+        .insert({
+          user_id: principal.userId,
+          name: body.name,
+          prefix: minted.prefix,
+          key_hash: minted.hash,
+          scopes,
+          expires_at: expiresAt,
+        })
+        .select('id,name,prefix,scopes,expires_at,created_at')
+        .single();
+      if (error) return jsonResponse({ error: error.message }, error.code === '23505' ? 409 : 500);
+      // The raw key is returned exactly once.
+      return jsonResponse({ ...data, key: minted.raw }, 201);
+    }
+
+    if (route === 'keysRevoke' && req.method === 'POST') {
+      const body = (await req.json().catch(() => ({}))) as { id?: string };
+      if (!body.id) return jsonResponse({ error: 'id required' }, 400);
+      const { error } = await adminDb
+        .from('simplify_api_keys')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('id', body.id)
+        .eq('user_id', principal.userId);
+      if (error) return jsonResponse({ error: error.message }, 500);
+      return jsonResponse({ ok: true });
+    }
+  }
+
   return jsonResponse({ error: 'not found' }, 404);
 }
 
-Deno.serve(handle);
+// Wrap handle() to decorate successful responses with rate-limit headers.
+async function handleWithHeaders(req: Request): Promise<Response> {
+  const res = await handle(req);
+  const rl = (req as unknown as { _rl?: Record<string, string> })._rl;
+  if (!rl) return res;
+  const merged = new Headers(res.headers);
+  for (const [k, v] of Object.entries(rl)) merged.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: merged });
+}
+
+Deno.serve(handleWithHeaders);
