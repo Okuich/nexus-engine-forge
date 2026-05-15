@@ -349,6 +349,194 @@ async function handle(req: Request): Promise<Response> {
     return jsonResponse({ jobs: data });
   }
 
+  // ── batch: queue many meshes under one parent batch ──────────────────────
+  if (route === 'batch' && req.method === 'POST') {
+    const parsed = BatchBody.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return jsonResponse({ error: parsed.error.flatten() }, 400);
+
+    const defaults = parsed.data.defaults ?? {};
+    const concurrency = parsed.data.concurrency ?? 3;
+
+    // Validate triangle ceilings up-front so we never half-enqueue.
+    const prepared = parsed.data.items.map((item, idx) => {
+      const mesh = item.mesh;
+      const tris = mesh.indices ? mesh.indices.length / 3 : (mesh.positions.length / 9) | 0;
+      if (tris > MAX_INPUT_TRIANGLES) {
+        throw new Error(`item ${idx} (${item.label ?? 'unnamed'}) has ${tris} triangles > ${MAX_INPUT_TRIANGLES}`);
+      }
+      return {
+        idx,
+        label: item.label ?? null,
+        mesh,
+        jobType: item.jobType ?? defaults.jobType ?? 'lods',
+        params: item.params ?? defaults.params ?? {},
+        tris,
+      };
+    });
+
+    const { data: batch, error: batchErr } = await db
+      .from('simplification_batches')
+      .insert({
+        user_id: user.id,
+        name: parsed.data.name ?? null,
+        total_jobs: prepared.length,
+        status: 'queued',
+        metadata: { concurrency, defaults },
+      })
+      .select('id')
+      .single();
+    if (batchErr) return jsonResponse({ error: batchErr.message }, 500);
+
+    const rows = prepared.map((p) => ({
+      user_id: user.id,
+      job_type: p.jobType,
+      status: 'queued',
+      progress: 0,
+      message: 'queued (batch)',
+      params: p.params,
+      input_triangles: p.tris,
+      batch_id: batch.id,
+      batch_index: p.idx,
+      batch_label: p.label,
+    }));
+    const { data: jobRows, error: jobsErr } = await db
+      .from('simplification_jobs')
+      .insert(rows)
+      .select('id,batch_index');
+    if (jobsErr) return jsonResponse({ error: jobsErr.message }, 500);
+
+    // Drain the queue with bounded concurrency in the background.
+    const indexToId = new Map(jobRows.map((r) => [r.batch_index as number, r.id as string]));
+    const drain = async () => {
+      let nextIdx = 0;
+      const workers: Promise<void>[] = [];
+      const runOne = async () => {
+        while (true) {
+          const myIdx = nextIdx++;
+          if (myIdx >= prepared.length) return;
+          const p = prepared[myIdx];
+          const jobId = indexToId.get(p.idx)!;
+          try {
+            await processJob(jobId, user.id, p.mesh, p.jobType, p.params);
+          } catch (_) {
+            // processJob already records failure; keep draining.
+          }
+        }
+      };
+      for (let i = 0; i < Math.min(concurrency, prepared.length); i++) workers.push(runOne());
+      await Promise.all(workers);
+
+      // Roll up batch status.
+      const { data: counts } = await admin()
+        .from('simplification_jobs')
+        .select('status', { count: 'exact', head: false })
+        .eq('batch_id', batch.id);
+      const tally = { completed: 0, failed: 0, cancelled: 0, other: 0 };
+      for (const r of counts ?? []) {
+        if (r.status === 'completed') tally.completed++;
+        else if (r.status === 'failed') tally.failed++;
+        else if (r.status === 'cancelled') tally.cancelled++;
+        else tally.other++;
+      }
+      const finalStatus =
+        tally.other > 0
+          ? 'running'
+          : tally.failed === 0 && tally.cancelled === 0
+            ? 'completed'
+            : tally.completed === 0
+              ? 'failed'
+              : 'partial';
+      await admin()
+        .from('simplification_batches')
+        .update({
+          status: finalStatus,
+          completed_at: tally.other === 0 ? new Date().toISOString() : null,
+        })
+        .eq('id', batch.id);
+    };
+
+    if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(drain());
+    else void drain();
+
+    return jsonResponse(
+      {
+        batchId: batch.id,
+        status: 'queued',
+        total: prepared.length,
+        concurrency,
+        jobIds: jobRows.map((r) => r.id),
+      },
+      202,
+    );
+  }
+
+  // ── batch status ─────────────────────────────────────────────────────────
+  if (route === 'batchStatus' && req.method === 'GET') {
+    const id = url.searchParams.get('id');
+    if (!id) return jsonResponse({ error: 'id required' }, 400);
+    const { data: batch, error: be } = await db
+      .from('simplification_batches')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (be) return jsonResponse({ error: be.message }, 500);
+    if (!batch) return jsonResponse({ error: 'not found' }, 404);
+
+    const { data: jobs, error: je } = await db
+      .from('simplification_jobs')
+      .select('id,job_type,status,progress,message,batch_index,batch_label,input_triangles,output_triangles,result_path,error_message,started_at,completed_at')
+      .eq('batch_id', id)
+      .eq('user_id', user.id)
+      .order('batch_index', { ascending: true });
+    if (je) return jsonResponse({ error: je.message }, 500);
+
+    const tally = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
+    let progressSum = 0;
+    for (const j of jobs ?? []) {
+      tally[j.status as keyof typeof tally] = (tally[j.status as keyof typeof tally] ?? 0) + 1;
+      progressSum += j.progress ?? 0;
+    }
+    const progress = jobs && jobs.length > 0 ? Math.round(progressSum / jobs.length) : 0;
+    return jsonResponse({ batch, jobs, tally, progress });
+  }
+
+  // ── batch cancel: cancels all non-terminal jobs in batch ─────────────────
+  if (route === 'batchCancel' && req.method === 'POST') {
+    const body = (await req.json().catch(() => ({}))) as { batchId?: string };
+    if (!body.batchId) return jsonResponse({ error: 'batchId required' }, 400);
+    const { error } = await db
+      .from('simplification_jobs')
+      .update({
+        status: 'cancelled',
+        message: 'cancelled (batch)',
+        completed_at: new Date().toISOString(),
+      })
+      .eq('batch_id', body.batchId)
+      .eq('user_id', user.id)
+      .in('status', ['queued', 'running']);
+    if (error) return jsonResponse({ error: error.message }, 500);
+    await db
+      .from('simplification_batches')
+      .update({ status: 'cancelled', completed_at: new Date().toISOString() })
+      .eq('id', body.batchId)
+      .eq('user_id', user.id);
+    return jsonResponse({ ok: true });
+  }
+
+  // ── batch list ───────────────────────────────────────────────────────────
+  if (route === 'batchList' && req.method === 'GET') {
+    const limit = Math.min(100, Number(url.searchParams.get('limit') ?? 25));
+    const { data, error } = await db
+      .from('simplification_batches')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) return jsonResponse({ error: error.message }, 500);
+    return jsonResponse({ batches: data });
+  }
+
   return jsonResponse({ error: 'not found' }, 404);
 }
 
