@@ -13,6 +13,8 @@ export type { TopologyOptimizationRequest } from './optimizer';
 export { runSIMP } from './simp';
 export { runSIMPGPU, runSIMPAuto, hasWebGPUForSIMP, WebGPUUnavailableError } from './simpGpu';
 export type { SimpGpuRunResult } from './simpGpu';
+export { runSIMPGPUMultiLoad, computeAggregationWeights } from './simpGpuMultiLoad';
+export type { SimpGpuMultiLoadResult } from './simpGpuMultiLoad';
 export { voxelizeForTopology, worldToVoxel } from './voxelizer';
 export type { VoxelDomain } from './voxelizer';
 export {
