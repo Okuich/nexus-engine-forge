@@ -425,6 +425,11 @@ Deno.serve(async (req) => {
   const path = url.pathname.replace(/^.*\/simplify-api/, '') || '/';
   try {
     if (req.method === 'GET' && path === '/health') return json({ ok: true });
+    if (req.method === 'GET' && path === '/cache/stats') return json(responseCache.stats());
+    if (req.method === 'DELETE' && path === '/cache') {
+      responseCache.clear();
+      return json({ ok: true, cleared: true });
+    }
     if (req.method === 'GET' && (path === '/openapi.json' || path === '/openapi')) {
       return json(openApiSpec);
     }
