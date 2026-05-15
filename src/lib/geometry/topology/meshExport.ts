@@ -92,6 +92,7 @@ function countTriangles(mesh: RawMesh): number {
 // ─────────────────────────────────────────────────────────────────────────
 
 export function exportSTL(mesh: RawMesh, options: ExportOptions = {}): string {
+  mesh = preprocess(mesh, options);
   const name = options.name ?? 'mesh';
   const lines: string[] = [`solid ${name}`];
   for (const tri of iterateTriangles(mesh)) {
