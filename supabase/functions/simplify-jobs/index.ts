@@ -19,6 +19,14 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3.23.8';
 import { buildLODs, coarsenGraph, meshToArrays } from '../simplify-api/core.ts';
+import {
+  Span,
+  log,
+  startSpanFromRequest,
+  traceResponseHeaders,
+  newTraceId,
+  newSpanId,
+} from './tracing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
