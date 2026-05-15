@@ -738,23 +738,39 @@ export async function runSIMPGPUMultiLoad(
     for (let i = 0; i < N; i++) change = Math.max(change, Math.abs(density[i] - prev[i]));
     prev.set(density);
 
-    options.onIteration?.({
-      iteration: iter,
-      density: new Float32Array(density),
-      compliance: aggCompliance,
-      perCaseCompliance: lastPerCase.slice(),
-      volumeFraction: updated.vol,
-      change,
-      elapsedMs: elapsed,
-    } satisfies TopoIterationState);
+    // perCaseCompliance is only needed for the optional telemetry callback.
+    // Read it back lazily so the default path stays at the previous 2-readback
+    // budget (weightsAgg + filtSens), independent of case count.
+    if (options.onIteration) {
+      const perCaseArr = await readF32(device, perCase, C);
+      readbacks++;
+      lastPerCase = Array.from(perCaseArr);
+      options.onIteration({
+        iteration: iter,
+        density: new Float32Array(density),
+        compliance: aggCompliance,
+        perCaseCompliance: lastPerCase.slice(),
+        volumeFraction: updated.vol,
+        change,
+        elapsedMs: elapsed,
+      } satisfies TopoIterationState);
+    }
 
     if (change < tol && iter > 5) { converged = true; break; }
   }
 
+  // If no callback ever ran, surface a final perCase readback so the result
+  // payload still exposes per-case compliance for downstream reporting.
+  if (!options.onIteration && C > 0) {
+    const perCaseArr = await readF32(device, perCase, C);
+    readbacks++;
+    lastPerCase = Array.from(perCaseArr);
+  }
+
   for (const b of [
-    densityBuf, flowA, flowB, sensAll, compAll, aggSens, filtSens, perCase, weightsBuf,
+    densityBuf, flowA, flowB, sensAll, compAll, aggSens, filtSens, perCase, weightsAggBuf, caseWeightsBuf,
     sourceMaskBuf, sourceMagBuf, supportBuf,
-    diffParamsBuf, sensParamsBuf, reduceParamsBuf, aggParamsBuf, filterParamsBuf,
+    diffParamsBuf, sensParamsBuf, reduceParamsBuf, ksParamsBuf, aggParamsBuf, filterParamsBuf,
   ]) b.destroy();
 
   return {
