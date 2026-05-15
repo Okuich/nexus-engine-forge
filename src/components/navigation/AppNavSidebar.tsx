@@ -22,7 +22,6 @@ import {
   Building2,
   Check,
   ChevronsUpDown,
-  Factory,
   FlaskConical,
   Workflow,
   ShieldCheck,
