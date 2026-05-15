@@ -54,7 +54,6 @@ const ROLE_PERMISSIONS: Record<AppRole, ReadonlySet<Permission>> = {
   owner: new Set<Permission>([
     'cad:view', 'cad:edit', 'cad:upload', 'cad:analyze',
     'ml:view', 'ml:train', 'ml:deploy', 'ml:evaluate',
-    'fab:view', 'fab:manage', 'fab:quote', 'fab:schedule',
     'rfq:view', 'rfq:create', 'rfq:quote', 'rfq:accept',
     'order:view', 'order:create', 'order:manage',
     'payment:view', 'payment:process',
@@ -67,7 +66,6 @@ const ROLE_PERMISSIONS: Record<AppRole, ReadonlySet<Permission>> = {
   admin: new Set<Permission>([
     'cad:view', 'cad:edit', 'cad:upload', 'cad:analyze',
     'ml:view', 'ml:train', 'ml:deploy', 'ml:evaluate',
-    'fab:view', 'fab:manage', 'fab:quote', 'fab:schedule',
     'rfq:view', 'rfq:create', 'rfq:quote', 'rfq:accept',
     'order:view', 'order:create', 'order:manage',
     'payment:view', 'payment:process',
@@ -97,7 +95,6 @@ const ROLE_PERMISSIONS: Record<AppRole, ReadonlySet<Permission>> = {
   ]),
 
   supplier: new Set<Permission>([
-    'fab:view', 'fab:manage', 'fab:quote', 'fab:schedule',
     'rfq:view', 'rfq:quote',
     'order:view',
     'payment:view',
