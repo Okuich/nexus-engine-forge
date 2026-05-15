@@ -39,10 +39,13 @@ function unitCube(): RawMesh {
     [1, 2, 6], [1, 6, 5],
   ];
   const positions: number[] = [];
-  for (const [a, b, c] of faces) {
-    positions.push(...v[a], ...v[b], ...v[c]);
-  }
-  return { positions: new Float32Array(positions) };
+  for (const corner of v) positions.push(...corner);
+  const indices: number[] = [];
+  for (const [a, b, c] of faces) indices.push(a, b, c);
+  return {
+    positions: new Float32Array(positions),
+    indices: new Uint32Array(indices),
+  };
 }
 
 // Analytic SDF for axis-aligned box [-1, 1]³.
