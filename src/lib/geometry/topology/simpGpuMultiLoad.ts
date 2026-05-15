@@ -653,28 +653,47 @@ export async function runSIMPGPUMultiLoad(
       device.queue.submit([enc.finish()]);
     }
 
-    // Readback #1: tiny C-float per-case compliance.
-    const perCaseArr = await readF32(device, perCase, C);
-    readbacks++;
-    lastPerCase = Array.from(perCaseArr);
+    // ── GPU softmax / weighted-sum: weights[C] + aggCompliance scalar ──
+    // Replaces the previous CPU `computeAggregationWeights` call AND the
+    // weights-buffer upload. Single dispatch; output is read back below.
+    {
+      const bg = device.createBindGroup({
+        layout: ctx.ksWeights.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: ksParamsBuf } },
+          { binding: 1, resource: { buffer: perCase } },
+          { binding: 2, resource: { buffer: caseWeightsBuf } },
+          { binding: 3, resource: { buffer: weightsAggBuf } },
+        ],
+      });
+      const enc = device.createCommandEncoder();
+      const pass = enc.beginComputePass();
+      pass.setPipeline(ctx.ksWeights);
+      pass.setBindGroup(0, bg);
+      pass.dispatchWorkgroups(1, 1, 1);
+      pass.end();
+      device.queue.submit([enc.finish()]);
+    }
 
-    // CPU computes weights for the GPU aggregation pass.
-    const caseWeights = cases.map(c => c.weight);
-    const { weights, aggCompliance } = computeAggregationWeights(
-      lastPerCase, caseWeights, aggregation, ksRho,
-    );
+    // Readback #1: tiny (C+1)-float weights+aggCompliance (constant w.r.t N).
+    // The trailing slot is the aggregated compliance scalar; preceding C
+    // slots stay on-GPU and are bound directly into the aggregate kernel.
+    const weightsAggArr = await readF32(device, weightsAggBuf, C + 1);
+    readbacks++;
+    const aggCompliance = weightsAggArr[C];
     lastAgg = aggCompliance;
     history.push(aggCompliance);
-    wF32(device, weightsBuf, new Float32Array(weights));
 
     // ── GPU aggregation: aggSens[i] = Σ_c weights[c] · sens[c·N + i] ──
+    // Binds weightsAggBuf directly — the WGSL kernel reads only [0..C-1],
+    // so the trailing aggCompliance slot is harmlessly ignored.
     {
       const bg = device.createBindGroup({
         layout: ctx.aggregate.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: aggParamsBuf } },
           { binding: 1, resource: { buffer: sensAll } },
-          { binding: 2, resource: { buffer: weightsBuf } },
+          { binding: 2, resource: { buffer: weightsAggBuf } },
           { binding: 3, resource: { buffer: aggSens } },
         ],
       });
