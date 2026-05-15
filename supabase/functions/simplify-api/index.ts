@@ -5,6 +5,7 @@
  *   POST /simplify-api/lods         → { lods, totalElapsedMs }
  *   POST /simplify-api/graph        → { graph }
  *   POST /simplify-api/inference    → { coarseMesh, lods, graph, features, featureDim }
+ *   POST /simplify-api/upload       → multipart/form-data: STL/OBJ → { lods, coarseMesh, graph }
  *   POST /simplify-api/graphql      → GraphQL { simplifyLODs, simplifyGraph, prepareForInference }
  *   GET  /simplify-api/graphql      → { schema } (SDL)
  *   GET  /simplify-api/health       → { ok: true }
