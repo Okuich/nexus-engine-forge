@@ -527,7 +527,27 @@ export async function runSIMPGPU(
 
 // ─── Auto dispatch ─────────────────────────────────────────────────────────
 
-/** Unified result with a discriminated backend tag. */
+/**
+ * Unified result returned by {@link runSIMPAuto}, with a discriminated
+ * `backend` tag so callers can branch on the executing path.
+ *
+ * Fields:
+ * - `backend`: `'webgpu'` if the WGSL pipeline ran end-to-end, `'cpu'` if the
+ *   JS SIMP solver ran (either by request or after a GPU fallback).
+ * - `elapsedMs`: wall-clock duration of the chosen backend's run, measured
+ *   with `performance.now()` when available (else `Date.now()`). Excludes
+ *   adapter/device init time on the GPU path.
+ * - `fellBack`: `true` only when a GPU run was attempted and downgraded to
+ *   CPU. `false` for direct GPU success and for `forceCpu` (no GPU attempt).
+ * - `fallbackReason`: present only when `fellBack === true`. One of:
+ *     • `'webgpu_unavailable'` — no `navigator.gpu` or `requestAdapter()` returned null
+ *     • `WebGPUUnavailableError.message` — adapter/device init failed mid-run
+ *     • `'gpu_run_failed: <message>'` — `runSIMPGPU` threw (compile, OOM, device lost, etc.)
+ *
+ * The remaining fields (`density`, `compliance`, `iterations`, `converged`,
+ * `history`) come from the underlying SIMP solver and have identical
+ * semantics across backends.
+ */
 export type SimpAutoResult =
   | (SimpGpuRunResult & { fellBack: false; fallbackReason?: undefined })
   | (Awaited<ReturnType<typeof import('./simp')['runSIMP']>> & {
