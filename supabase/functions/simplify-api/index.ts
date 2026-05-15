@@ -108,58 +108,109 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
+function json(body: unknown, status = 200, extraHeaders?: Record<string, string>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', ...(extraHeaders ?? {}) },
+  });
+}
 function err(message: string, status = 400, details?: unknown) {
   return json({ error: message, details }, status);
+}
+
+/**
+ * Read JSON body once, return both the parsed value and a cache key derived
+ * from the mesh content hash + route + canonicalized options.
+ */
+async function withCache<T>(
+  route: SimplifyRoute,
+  body: { mesh: { positions: number[]; indices?: number[] } } & Record<string, unknown>,
+  optionsForKey: unknown,
+  compute: () => Promise<T> | T,
+): Promise<Response> {
+  const meshHash = await hashMesh(body.mesh);
+  const key = makeCacheKey({ route, meshHash, options: optionsForKey });
+  const cached = responseCache.get(key);
+  if (cached !== undefined) {
+    return new Response(cached, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'X-Cache': 'HIT',
+        'X-Cache-Key': meshHash,
+      },
+    });
+  }
+  const value = await compute();
+  const serialized = JSON.stringify(value);
+  responseCache.set(key, serialized, serialized.length);
+  return new Response(serialized, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+      'X-Cache': 'MISS',
+      'X-Cache-Key': meshHash,
+    },
+  });
 }
 
 async function handleLODs(req: Request) {
   const parsed = LODsRequestSchema.safeParse(await req.json());
   if (!parsed.success) return err('invalid_request', 400, parsed.error.flatten());
-  const r = buildLODs(parsed.data.mesh, parsed.data.options ?? {});
-  return json(r);
+  return withCache('lods', parsed.data, parsed.data.options ?? null, () =>
+    buildLODs(parsed.data.mesh, parsed.data.options ?? {}),
+  );
 }
 
 async function handleGraph(req: Request) {
   const parsed = GraphRequestSchema.safeParse(await req.json());
   if (!parsed.success) return err('invalid_request', 400, parsed.error.flatten());
-  const m = meshToArrays(parsed.data.mesh);
-  const t0 = performance.now();
-  const graph = coarsenGraph(m, parsed.data.options?.targetNodes, parsed.data.options?.targetRatio);
-  return json({ graph, elapsedMs: performance.now() - t0 });
+  return withCache('graph', parsed.data, parsed.data.options ?? null, () => {
+    const m = meshToArrays(parsed.data.mesh);
+    const t0 = performance.now();
+    const graph = coarsenGraph(m, parsed.data.options?.targetNodes, parsed.data.options?.targetRatio);
+    return { graph, elapsedMs: performance.now() - t0 };
+  });
 }
 
 async function handleInference(req: Request) {
   const parsed = InferenceRequestSchema.safeParse(await req.json());
   if (!parsed.success) return err('invalid_request', 400, parsed.error.flatten());
-  const t0 = performance.now();
-  const lodResult = buildLODs(parsed.data.mesh, parsed.data.lod ?? {});
-  const m = meshToArrays(parsed.data.mesh);
-  const graph = coarsenGraph(m, parsed.data.graph?.targetNodes, parsed.data.graph?.targetRatio);
+  return withCache('inference', parsed.data,
+    { lod: parsed.data.lod ?? null, graph: parsed.data.graph ?? null },
+    () => {
+      const t0 = performance.now();
+      const lodResult = buildLODs(parsed.data.mesh, parsed.data.lod ?? {});
+      const m = meshToArrays(parsed.data.mesh);
+      const graph = coarsenGraph(m, parsed.data.graph?.targetNodes, parsed.data.graph?.targetRatio);
 
-  // Flat feature matrix [nodes × 7]: area, nx, ny, nz, curvature, |members|, levelHint
-  const featureDim = 7;
-  const features = new Float32Array(graph.nodeCount * featureDim);
-  for (let i = 0; i < graph.nodeCount; i++) {
-    const nf = graph.nodeFeatures[i];
-    const off = i * featureDim;
-    features[off] = nf.area;
-    features[off + 1] = nf.avgNormal[0];
-    features[off + 2] = nf.avgNormal[1];
-    features[off + 3] = nf.avgNormal[2];
-    features[off + 4] = nf.avgCurvature;
-    features[off + 5] = graph.clusters[i].length;
-    features[off + 6] = lodResult.lods.length - 1;
-  }
+      const featureDim = 7;
+      const features = new Float32Array(graph.nodeCount * featureDim);
+      for (let i = 0; i < graph.nodeCount; i++) {
+        const nf = graph.nodeFeatures[i];
+        const off = i * featureDim;
+        features[off] = nf.area;
+        features[off + 1] = nf.avgNormal[0];
+        features[off + 2] = nf.avgNormal[1];
+        features[off + 3] = nf.avgNormal[2];
+        features[off + 4] = nf.avgCurvature;
+        features[off + 5] = graph.clusters[i].length;
+        features[off + 6] = lodResult.lods.length - 1;
+      }
 
-  return json({
-    coarseMesh: lodResult.lods[lodResult.lods.length - 1].mesh,
-    lods: lodResult.lods,
-    graph,
-    features: b64FromBuffer(features),
-    featureDim,
-    nodeToFaces: graph.clusters,
-    elapsedMs: performance.now() - t0,
-  });
+      return {
+        coarseMesh: lodResult.lods[lodResult.lods.length - 1].mesh,
+        lods: lodResult.lods,
+        graph,
+        features: b64FromBuffer(features),
+        featureDim,
+        nodeToFaces: graph.clusters,
+        elapsedMs: performance.now() - t0,
+      };
+    },
+  );
 }
 
 // ─── GraphQL (minimal hand-rolled resolver) ─────────────────────────────────
