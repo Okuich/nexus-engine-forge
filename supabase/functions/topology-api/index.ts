@@ -238,6 +238,37 @@ Deno.serve(async (req: Request) => {
     if (path === '/stream') {
       return await handleStream(req);
     }
+    if (path === '/analyzeFaceAdjacency') {
+      let raw: unknown;
+      try { raw = await req.json(); }
+      catch { throw new HttpError(400, 'invalid JSON body'); }
+      const inner = (raw && typeof raw === 'object' && '$schema' in (raw as object))
+        ? (raw as { data: unknown }).data : raw;
+      let parsed;
+      try { parsed = validateAnalyzeBody(inner); }
+      catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : 'invalid request');
+      }
+      const result = analyzeFaceAdjacencyRequest(parsed.graph, parsed.options);
+      return json(envelope('analyzeFaceAdjacency', result));
+    }
+    if (path === '/findCriticalFaces') {
+      let raw: unknown;
+      try { raw = await req.json(); }
+      catch { throw new HttpError(400, 'invalid JSON body'); }
+      const inner = (raw && typeof raw === 'object' && '$schema' in (raw as object))
+        ? (raw as { data: unknown }).data : raw;
+      let parsed;
+      try { parsed = validateCriticalBody(inner); }
+      catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : 'invalid request');
+      }
+      const result = findCriticalFacesRequest(parsed.graph, parsed.options);
+      return json(envelope('findCriticalFaces', result));
+    }
+    if (req.method === 'GET' && path === '/backends') {
+      return json(envelope('backends', { backends: listBackends() }));
+    }
     return json({ error: `route not found: ${path}` }, 404);
   } catch (e) {
     if (e instanceof HttpError) {
