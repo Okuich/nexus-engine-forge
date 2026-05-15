@@ -200,3 +200,27 @@ export async function downloadSimplificationResult(job: SimplificationJob): Prom
   if (!res.ok) throw new Error(`download failed: ${res.status}`);
   return res.json();
 }
+
+/**
+ * Poll a batch until every job reaches a terminal state.
+ * Calls `onProgress` with the rolled-up tally + per-job snapshots.
+ */
+export async function waitForSimplificationBatch(
+  batchId: string,
+  opts: WaitOptions & {
+    onProgress?: (snapshot: BatchStatusResult) => void;
+  } = {},
+): Promise<BatchStatusResult> {
+  const interval = Math.max(750, opts.intervalMs ?? 2000);
+  const deadline = Date.now() + (opts.timeoutMs ?? 30 * 60_000);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const snap = await simplifyJobsApi.batchStatus(batchId);
+    opts.onProgress?.(snap);
+    const terminal = ['completed', 'failed', 'cancelled', 'partial'];
+    if (terminal.includes(snap.batch.status)) return snap;
+    if (Date.now() > deadline) throw new Error('batch polling timed out');
+    await new Promise((r) => setTimeout(r, interval));
+  }
+}
