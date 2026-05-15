@@ -5,11 +5,8 @@
  * permissions. Works alongside productBoundary.ts (product → feature mapping)
  * and rbac.ts (role → permission matrix).
  *
- * Market positioning drives role locks:
- *  - `buyer` / `procurement` → midwater  (demand monopoly — buyer aggregation)
- *  - `supplier`              → fabrication_os (supply monopoly — supplier aggregation)
- *  - `owner` / `admin`       → both products (org-wide)
- *  - Other roles             → determined by their `licensed_products` membership field
+ * Midwater is the only product on this platform. Fabrication OS has been
+ * split out as a separate platform and is no longer sold here.
  */
 
 import type { AppRole } from '@/lib/auth/rbac';
@@ -19,11 +16,10 @@ import { hasProduct } from '@/services/productBoundary';
 // ─── Role → Product Mapping ────────────────────────────────────
 
 /**
- * Roles that are hard-locked to a single product.
- * These override whatever `licensed_products` says on the membership.
+ * Roles that are hard-locked to a single product. Empty for now — all
+ * roles default to whatever `licensed_products` says on the membership.
  */
 export const ROLE_PRODUCT_LOCK: Partial<Record<AppRole, Product>> = {
-  supplier: 'fabrication_os',
   procurement: 'midwater',
 };
 
@@ -93,7 +89,7 @@ export function resolveEffectiveProducts(ctx: AccessContext): Product[] {
 
   // Org-wide roles get everything
   if (ORG_WIDE_ROLES.has(ctx.role)) {
-    return ['midwater', 'fabrication_os'];
+    return ['midwater'];
   }
 
   // Hard-locked roles ignore licensed_products
