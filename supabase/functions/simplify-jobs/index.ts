@@ -81,6 +81,8 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
+// Legacy JWT-only resolver, kept for reference; auth flows through ./auth.ts.
+// deno-lint-ignore no-unused-vars
 async function getUser(req: Request): Promise<{
   user: { id: string } | null;
   client: SupabaseClient;
