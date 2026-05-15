@@ -143,7 +143,7 @@ async function processJob(
   const db = admin();
   const update = (patch: Record<string, unknown>) =>
     db.from('simplification_jobs')
-      .update({ ...patch, trace_id: span.traceId })
+      .update({ ...patch })
       .eq('id', jobId);
   const cancelled = async () => {
     const { data: row } = await db
