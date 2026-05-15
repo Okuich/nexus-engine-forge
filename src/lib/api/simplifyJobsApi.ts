@@ -7,6 +7,7 @@
  *   - downloadResult that fetches the signed result URL and parses it
  */
 import { supabase } from '@/integrations/supabase/client';
+import { z } from 'zod';
 
 export type SimplificationJobStatus =
   | 'queued'
