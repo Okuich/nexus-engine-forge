@@ -6,7 +6,7 @@
  * (ASCII formats) or `Uint8Array` (binary STL) — callers handle file I/O.
  */
 import type { RawMesh } from './types';
-import { ensureWatertight, type SealOptions, type WatertightReport } from './meshWatertight';
+import { ensureWatertight, analyzeWatertightness, type SealOptions, type WatertightReport } from './meshWatertight';
 
 export interface ExportOptions {
   /** Solid / object name. Default 'mesh'. */
