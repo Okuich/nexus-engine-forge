@@ -57,85 +57,8 @@ const ComplianceRequest = z.object({
   supports: z.array(SupportConditionJSON).max(1024).optional(),
 });
 
-type ComplianceRequest = z.infer<typeof ComplianceRequest>;
-
-// ─── Compute ───────────────────────────────────────────────────────────────
-
-interface PerCaseEntry {
-  name: string;
-  weight: number;
-  compliance: number;
-}
-
-interface ComplianceResult {
-  perCaseCompliance: number[];
-  perCase: PerCaseEntry[];
-  loadCaseAggregation: 'weighted-sum' | 'ks';
-  ksRho?: number;
-  aggregatedCompliance: number;
-  /** Notes about the surrogate vs. full SIMP solve. */
-  surrogate: true;
-}
-
-/**
- * Per-case compliance surrogate: Σ‖F‖² scaled by 1 / max(1, supportCount).
- * This is a placeholder until the SIMP solver runs server-side; it preserves
- * the units (energy-like) and the aggregation contract.
- */
-function computePerCaseCompliance(req: ComplianceRequest): number[] {
-  const topSupports = req.supports?.length ?? 0;
-  return req.loadCases.map(c => {
-    const supports = c.supports?.length ?? topSupports;
-    const denom = Math.max(1, supports);
-    let energy = 0;
-    for (const ld of c.loads) {
-      const [fx, fy, fz] = ld.force;
-      energy += fx * fx + fy * fy + fz * fz;
-    }
-    return energy / denom;
-  });
-}
-
-function aggregate(
-  perCase: number[],
-  weights: number[],
-  mode: 'weighted-sum' | 'ks',
-  ksRho: number,
-): number {
-  if (mode === 'ks') {
-    // Numerically stable KS soft-max with weights: (1/ρ) * (M + log Σ exp(ρ·w·c − M)).
-    const scaled = perCase.map((c, i) => ksRho * weights[i] * c);
-    const M = scaled.reduce((m, v) => Math.max(m, v), -Infinity);
-    if (!Number.isFinite(M)) return 0;
-    let denom = 0;
-    for (const s of scaled) denom += Math.exp(s - M);
-    return (Math.log(denom) + M) / ksRho;
-  }
-  let acc = 0;
-  for (let i = 0; i < perCase.length; i++) acc += weights[i] * perCase[i];
-  return acc;
-}
-
-export function evaluateCompliance(req: ComplianceRequest): ComplianceResult {
-  const mode = req.loadCaseAggregation ?? 'weighted-sum';
-  const ksRho = req.ksRho ?? 8;
-  const perCaseCompliance = computePerCaseCompliance(req);
-  const weights = req.loadCases.map(c => c.weight ?? 1);
-  const aggregated = aggregate(perCaseCompliance, weights, mode, ksRho);
-  const perCase: PerCaseEntry[] = req.loadCases.map((c, i) => ({
-    name: c.name ?? `case_${i}`,
-    weight: weights[i],
-    compliance: perCaseCompliance[i],
-  }));
-  return {
-    perCaseCompliance,
-    perCase,
-    loadCaseAggregation: mode,
-    ksRho: mode === 'ks' ? ksRho : undefined,
-    aggregatedCompliance: aggregated,
-    surrogate: true,
-  };
-}
+import { evaluateCompliance, type ComplianceRequest as ComplianceRequestT } from './compliance.ts';
+export { evaluateCompliance } from './compliance.ts';
 
 // ─── HTTP plumbing ─────────────────────────────────────────────────────────
 
