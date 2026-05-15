@@ -12,7 +12,7 @@ import {
   buildLODs,
   coarsenGraph,
   meshToArrays,
-} from '../../supabase/functions/simplify-api/index';
+} from '../../supabase/functions/simplify-api/core';
 
 // ─── Golden mesh generators ────────────────────────────────────────────────
 
