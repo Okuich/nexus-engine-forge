@@ -1,0 +1,73 @@
+# Horizontal Pod Autoscaler.
+#
+# Two signals:
+#   - CPU averaged across pods (covers heavy QEM passes)
+#   - simplify_inflight_requests via custom metrics (covers I/O-bound bursts)
+#
+# Custom metric requires prometheus-adapter or a similar adapter wired into
+# `external.metrics.k8s.io`. The metric name matches the one exposed at
+# /metrics on each pod.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: simplify-worker
+  namespace: midwater
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: simplify-worker
+  minReplicas: 2
+  maxReplicas: 25
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: simplify_inflight_requests
+        target:
+          type: AverageValue
+          averageValue: "6"
+---
+# Cluster-wide ceiling for the namespace so a runaway HPA can't starve other
+# workloads.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: simplify-worker-quota
+  namespace: midwater
+spec:
+  hard:
+    requests.cpu: "30"
+    requests.memory: 30Gi
+    limits.cpu: "60"
+    limits.memory: 60Gi
+    pods: "40"

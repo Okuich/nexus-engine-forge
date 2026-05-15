@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplify-worker
+  namespace: midwater
+  labels:
+    app.kubernetes.io/name: simplify-worker
+    app.kubernetes.io/part-of: midwater
+spec:
+  # HPA owns replica count; keep this as the seed.
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: simplify-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: simplify-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: simplify-worker
+      containers:
+        - name: worker
+          image: ghcr.io/midwater/simplify-worker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: simplify-worker-config
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+              ephemeral-storage: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+              ephemeral-storage: "1Gi"
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec:
+                # Drain time so in-flight simplifications can finish.
+                command: ["/bin/sh", "-c", "sleep 10"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

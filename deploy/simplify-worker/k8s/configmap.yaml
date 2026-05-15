@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: midwater
+  labels:
+    app.kubernetes.io/part-of: midwater
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simplify-worker-config
+  namespace: midwater
+data:
+  PORT: "8080"
+  MAX_CONCURRENCY: "8"
+  MAX_TRIANGLES: "200000"
+  LOG_LEVEL: "info"
