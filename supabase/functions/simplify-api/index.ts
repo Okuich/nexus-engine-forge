@@ -687,6 +687,7 @@ Deno.serve(async (req) => {
     if (path === '/lods') return await handleLODs(req);
     if (path === '/graph') return await handleGraph(req);
     if (path === '/inference') return await handleInference(req);
+    if (path === '/upload') return await handleUpload(req);
     return err('not_found', 404);
   } catch (e) {
     return err((e as Error).message, 500);
