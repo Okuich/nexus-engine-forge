@@ -4,7 +4,7 @@ import {
   sealSmallHoles,
   ensureWatertight,
 } from '@/lib/geometry/topology/meshWatertight';
-import { exportSTL } from '@/lib/geometry/topology/meshExport';
+import { exportSTL, exportSTLBinary, exportOBJ } from '@/lib/geometry/topology/meshExport';
 import type { RawMesh } from '@/lib/geometry/types';
 
 // Unit tetrahedron: 4 vertices, 4 faces — closed.
