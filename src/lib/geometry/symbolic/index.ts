@@ -40,6 +40,41 @@ export {
   SymbolicBackendError,
 } from './types';
 
+export {
+  SYMBOLIC_WIRE_VERSION,
+  SymbolicSerializationError,
+  canonicalize,
+  serialize,
+  deserialize,
+  toEnvelope,
+  fromEnvelope,
+  encodeScalar,
+  decodeScalar,
+  encodeExpr,
+  decodeExpr,
+  encodeRational,
+  decodeRational,
+  encodePrimitive,
+  decodePrimitive,
+  encodeConstraint,
+  decodeConstraint,
+  encodeBinding,
+  decodeBinding,
+  encodeSolveOutcome,
+  decodeSolveOutcome,
+} from './serialization';
+export type {
+  SymbolicEnvelope,
+  SymbolicWireType,
+  ScalarJSON,
+  RationalJSON,
+  ExprJSON,
+  PrimitiveJSON,
+  ConstraintJSON,
+  BindingJSON,
+  SolveOutcomeJSON,
+} from './serialization';
+
 export type {
   SymbolicScalar,
   RationalLiteral,
