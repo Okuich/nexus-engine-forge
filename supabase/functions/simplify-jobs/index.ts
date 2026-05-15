@@ -265,6 +265,8 @@ async function processJob(
       error_message: message,
       completed_at: new Date().toISOString(),
     });
+  } finally {
+    span.end();
   }
 }
 
