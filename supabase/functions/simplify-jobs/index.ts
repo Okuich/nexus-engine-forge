@@ -484,6 +484,10 @@ async function handle(req: Request): Promise<Response> {
 
     // Drain the queue with bounded concurrency in the background.
     const indexToId = new Map(jobRows.map((r) => [r.batch_index as number, r.id as string]));
+    const reqSpan = (req as unknown as { _span?: Span })._span;
+    const batchSpan = reqSpan
+      ? reqSpan.child(`batch.drain`).setAttrs({ 'batch.id': batch.id, 'batch.size': prepared.length })
+      : undefined;
     const drain = async () => {
       let nextIdx = 0;
       const workers: Promise<void>[] = [];
