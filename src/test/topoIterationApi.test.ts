@@ -102,4 +102,59 @@ describe('topo iteration preview API', () => {
     const r = await promise;
     expect(r.density.length).toBe(10 * 6 * 6);
   });
+
+  it('subscribeSIMP stops the underlying SIMP run when the AbortSignal fires', async () => {
+    const ac = new AbortController();
+    const seen: number[] = [];
+    const { promise } = subscribeSIMP(
+      domain(), loads, supports,
+      { maxIterations: 50 },
+      (s) => {
+        seen.push(s.iteration);
+        if (seen.length === 2) ac.abort();
+      },
+      { signal: ac.signal },
+    );
+    const r = await promise;
+    expect(r.cancelled).toBe(true);
+    expect(r.iterations).toBeLessThan(10);
+    expect(seen.length).toBeLessThan(10);
+    expect(r.density.length).toBe(10 * 6 * 6);
+    expect(Number.isFinite(r.compliance)).toBe(true);
+  });
+
+  it('subscribeSIMP returns immediately when signal is already aborted', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const seen: number[] = [];
+    const { promise } = subscribeSIMP(
+      domain(), loads, supports,
+      { maxIterations: 50 },
+      (s) => { seen.push(s.iteration); },
+      { signal: ac.signal },
+    );
+    const r = await promise;
+    expect(r.cancelled).toBe(true);
+    expect(r.iterations).toBe(0);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('streamSIMP terminates promptly when its signal aborts', async () => {
+    const ac = new AbortController();
+    const stream = streamSIMP(
+      domain(), loads, supports,
+      { maxIterations: 50 },
+      { signal: ac.signal },
+    );
+    const snaps: number[] = [];
+    let result: Awaited<ReturnType<typeof stream.next>>['value'] | undefined;
+    while (true) {
+      const r = await stream.next();
+      if (r.done) { result = r.value; break; }
+      snaps.push(r.value.iteration);
+      if (snaps.length === 2) ac.abort();
+    }
+    expect((result as { cancelled?: boolean }).cancelled).toBe(true);
+    expect(snaps.length).toBeLessThan(10);
+  });
 });
