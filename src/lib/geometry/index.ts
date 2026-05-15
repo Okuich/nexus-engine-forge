@@ -281,6 +281,11 @@ export type {
   TopologyResult,
   TopologyDispatch,
   TopologyCapabilityFlag,
+  // Integration hook types
+  DispatchPlan as TopologyDispatchPlan,
+  CreateGraphSpec as TopologyCreateGraphSpec,
+  AnalyzeAdjacencyOptions,
+  AnalyzeAdjacencyResult,
 } from './topologyReasoning';
 
 // ── Three.js integration (existing, backward-compatible) ────────
