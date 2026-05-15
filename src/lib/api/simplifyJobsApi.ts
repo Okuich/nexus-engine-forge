@@ -192,14 +192,153 @@ export async function waitForSimplificationJob(
   }
 }
 
-/** Fetch the parsed result payload for a completed job. */
-export async function downloadSimplificationResult(job: SimplificationJob): Promise<unknown> {
+// ─── Result-payload schemas (Zod) ──────────────────────────────────────────
+//
+// Every `simplify-jobs` worker writes one of these JSON shapes to storage.
+// Keep these in sync with `processJob` in supabase/functions/simplify-jobs/index.ts.
+
+const MeshArraysSchema = z.object({
+  positions: z.array(z.number()),
+  indices: z.array(z.number()).optional(),
+  normals: z.array(z.number()).optional(),
+});
+
+const LodLevelSchema = z.object({
+  level: z.number().int().nonnegative(),
+  mesh: MeshArraysSchema,
+  stats: z.object({
+    inputTriangles: z.number().int().nonnegative(),
+    outputTriangles: z.number().int().nonnegative(),
+    elapsedMs: z.number().nonnegative(),
+  }).passthrough(),
+}).passthrough();
+
+const GraphSchema = z.object({
+  nodeCount: z.number().int().nonnegative(),
+  edgeCount: z.number().int().nonnegative(),
+  nodeFeatures: z.array(
+    z.object({
+      area: z.number(),
+      avgNormal: z.tuple([z.number(), z.number(), z.number()]),
+      avgCurvature: z.number(),
+    }).passthrough(),
+  ),
+  clusters: z.array(z.array(z.number().int().nonnegative())),
+}).passthrough();
+
+export const LodsResultSchema = z.object({
+  jobType: z.literal('lods'),
+  lods: z.array(LodLevelSchema).min(1),
+  totalElapsedMs: z.number().nonnegative(),
+});
+export const GraphResultSchema = z.object({
+  jobType: z.literal('graph'),
+  graph: GraphSchema,
+});
+export const InferenceResultSchema = z.object({
+  jobType: z.literal('inference'),
+  coarseMesh: MeshArraysSchema,
+  lods: z.array(LodLevelSchema).min(1),
+  graph: GraphSchema,
+  /** Base64-encoded Float32Array of length `nodeCount * featureDim`. */
+  features: z.string().min(1),
+  featureDim: z.number().int().positive(),
+  nodeToFaces: z.array(z.array(z.number().int().nonnegative())),
+});
+
+export const SimplificationResultSchema = z.discriminatedUnion('jobType', [
+  LodsResultSchema,
+  GraphResultSchema,
+  InferenceResultSchema,
+]);
+
+export type LodsResult = z.infer<typeof LodsResultSchema>;
+export type GraphResult = z.infer<typeof GraphResultSchema>;
+export type InferenceResult = z.infer<typeof InferenceResultSchema>;
+export type SimplificationResult = z.infer<typeof SimplificationResultSchema>;
+
+/**
+ * Thrown when a downloaded result fails validation. Carries the original
+ * Zod issues so callers can surface field-level diagnostics in the UI.
+ */
+export class SimplificationResultError extends Error {
+  readonly code:
+    | 'not_ready'
+    | 'http_error'
+    | 'invalid_json'
+    | 'schema_mismatch';
+  readonly jobId: string;
+  readonly httpStatus?: number;
+  readonly issues?: z.ZodIssue[];
+
+  constructor(args: {
+    code: SimplificationResultError['code'];
+    message: string;
+    jobId: string;
+    httpStatus?: number;
+    issues?: z.ZodIssue[];
+  }) {
+    super(args.message);
+    this.name = 'SimplificationResultError';
+    this.code = args.code;
+    this.jobId = args.jobId;
+    this.httpStatus = args.httpStatus;
+    this.issues = args.issues;
+  }
+}
+
+/**
+ * Fetch and validate the parsed result payload for a completed job.
+ * Throws `SimplificationResultError` (with `code` + Zod `issues`) on any
+ * failure so the caller can render typed, actionable feedback.
+ */
+export async function downloadSimplificationResult(
+  job: SimplificationJob,
+): Promise<SimplificationResult> {
   if (job.status !== 'completed' || !job.downloadUrl) {
-    throw new Error('result not available');
+    throw new SimplificationResultError({
+      code: 'not_ready',
+      jobId: job.id,
+      message: `result not available (status=${job.status})`,
+    });
   }
   const res = await fetch(job.downloadUrl);
-  if (!res.ok) throw new Error(`download failed: ${res.status}`);
-  return res.json();
+  if (!res.ok) {
+    throw new SimplificationResultError({
+      code: 'http_error',
+      jobId: job.id,
+      httpStatus: res.status,
+      message: `download failed: HTTP ${res.status}`,
+    });
+  }
+
+  let raw: unknown;
+  try {
+    raw = await res.json();
+  } catch (err) {
+    throw new SimplificationResultError({
+      code: 'invalid_json',
+      jobId: job.id,
+      message: `result body is not valid JSON: ${(err as Error).message}`,
+    });
+  }
+
+  const parsed = SimplificationResultSchema.safeParse(raw);
+  if (!parsed.success) {
+    const summary = parsed.error.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('; ');
+    throw new SimplificationResultError({
+      code: 'schema_mismatch',
+      jobId: job.id,
+      issues: parsed.error.issues,
+      message: `result payload failed schema validation (${parsed.error.issues.length} issue${
+        parsed.error.issues.length === 1 ? '' : 's'
+      }): ${summary}`,
+    });
+  }
+  return parsed.data;
 }
 
 /**
