@@ -75,7 +75,7 @@ interface MeshArrays {
   indices: Uint32Array;
 }
 
-function meshToArrays(m: RawMesh): MeshArrays {
+export function meshToArrays(m: RawMesh): MeshArrays {
   const positions = new Float32Array(m.positions);
   const indices = m.indices && m.indices.length > 0
     ? new Uint32Array(m.indices)
@@ -162,7 +162,7 @@ function simplifyVertexCluster(input: MeshArrays, gridResolution: number): MeshA
   return { positions: newPositions, indices: new Uint32Array(newIdx) };
 }
 
-function buildLODs(
+export function buildLODs(
   mesh: RawMesh,
   options: { levels?: number; ratioPerLevel?: number; minTriangles?: number; maxLevels?: number },
 ): { lods: SimplifiedLODOut[]; totalElapsedMs: number } {
@@ -278,7 +278,7 @@ function buildFaceAdjacency(m: MeshArrays): {
   return { faces, adjacency };
 }
 
-function coarsenGraph(
+export function coarsenGraph(
   m: MeshArrays,
   targetNodes?: number,
   targetRatio?: number,
