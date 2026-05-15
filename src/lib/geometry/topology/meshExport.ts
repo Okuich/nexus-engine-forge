@@ -36,7 +36,6 @@ function preprocess(mesh: RawMesh, options: ExportOptions): RawMesh {
     return result.mesh;
   }
   // Report only.
-  const { analyzeWatertightness } = require('./meshWatertight') as typeof import('./meshWatertight');
   options.onWatertightReport?.(analyzeWatertightness(mesh, sealOpts.weldEpsilon ?? 1e-6));
   return mesh;
 }
