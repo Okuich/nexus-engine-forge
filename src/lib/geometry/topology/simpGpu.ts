@@ -525,21 +525,67 @@ export async function runSIMPGPU(
   };
 }
 
+// ─── Auto dispatch ─────────────────────────────────────────────────────────
+
+/** Unified result with a discriminated backend tag. */
+export type SimpAutoResult =
+  | (SimpGpuRunResult & { fellBack: false; fallbackReason?: undefined })
+  | (Awaited<ReturnType<typeof import('./simp')['runSIMP']>> & {
+      backend: 'cpu';
+      elapsedMs: number;
+      fellBack: boolean;
+      fallbackReason?: string;
+    });
+
 /**
- * Convenience: run on GPU when available, else fall back to CPU runSIMP.
- * Returns a discriminated `backend` field.
+ * Run SIMP on the GPU when available, otherwise fall back to the CPU
+ * implementation. The result always carries a discriminated `backend`
+ * field plus `elapsedMs` and a `fellBack` flag describing whether a GPU
+ * attempt was made and downgraded.
+ *
+ * Fallback triggers:
+ *   • `navigator.gpu` missing or `requestAdapter()` returned null
+ *   • `runSIMPGPU` threw (compile error, device lost, OOM, etc.)
+ *   • caller passed `forceCpu: true`
  */
 export async function runSIMPAuto(
   domain: VoxelDomain,
   loads: LoadCondition[],
   supports: SupportCondition[],
-  options: TopoOptimizerOptions = {},
-): Promise<SimpGpuRunResult | (Awaited<ReturnType<typeof import('./simp')['runSIMP']>> & { backend: 'cpu' })> {
-  if (await hasWebGPUForSIMP()) {
-    try { return await runSIMPGPU(domain, loads, supports, options); }
-    catch { /* fall through to CPU */ }
+  options: TopoOptimizerOptions & { forceCpu?: boolean } = {},
+): Promise<SimpAutoResult> {
+  const { forceCpu, ...simpOptions } = options;
+
+  const runCpu = async (
+    fellBack: boolean,
+    reason?: string,
+  ): Promise<SimpAutoResult> => {
+    const { runSIMP } = await import('./simp');
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const res = runSIMP(domain, loads, supports, simpOptions);
+    const elapsedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
+    return {
+      ...res,
+      backend: 'cpu' as const,
+      elapsedMs,
+      fellBack,
+      ...(reason ? { fallbackReason: reason } : {}),
+    };
+  };
+
+  if (forceCpu) return runCpu(false);
+
+  if (!(await hasWebGPUForSIMP())) {
+    return runCpu(true, 'webgpu_unavailable');
   }
-  const { runSIMP } = await import('./simp');
-  const res = runSIMP(domain, loads, supports, options);
-  return { ...res, backend: 'cpu' as const };
+
+  try {
+    const gpu = await runSIMPGPU(domain, loads, supports, simpOptions);
+    return { ...gpu, fellBack: false };
+  } catch (err) {
+    const reason = err instanceof WebGPUUnavailableError
+      ? err.message
+      : `gpu_run_failed: ${err instanceof Error ? err.message : String(err)}`;
+    return runCpu(true, reason);
+  }
 }
