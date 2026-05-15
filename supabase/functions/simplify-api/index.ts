@@ -26,7 +26,9 @@ import {
   type MeshFormat,
   type RawMeshIn,
 } from './parsers.ts';
+import { openApiSpec, swaggerHTML } from './openapi.ts';
 export { parseSTL, parseOBJ, parseUploadedMesh, inferMeshFormat } from './parsers.ts';
+export { openApiSpec } from './openapi.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
