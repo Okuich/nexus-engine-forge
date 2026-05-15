@@ -6,12 +6,39 @@
  * (ASCII formats) or `Uint8Array` (binary STL) — callers handle file I/O.
  */
 import type { RawMesh } from './types';
+import { ensureWatertight, type SealOptions, type WatertightReport } from './meshWatertight';
 
 export interface ExportOptions {
   /** Solid / object name. Default 'mesh'. */
   name?: string;
   /** Append unit-normals (OBJ only). Default false. */
   includeNormals?: boolean;
+  /**
+   * If true, run hole-sealing before serialization. The sealed mesh is used
+   * for output. Pass an object to forward `SealOptions`. Default false.
+   */
+  ensureWatertight?: boolean | SealOptions;
+  /**
+   * Optional sink that receives the watertightness report (post-seal if
+   * `ensureWatertight` is set, otherwise pre-export analysis).
+   */
+  onWatertightReport?: (report: WatertightReport) => void;
+}
+
+function preprocess(mesh: RawMesh, options: ExportOptions): RawMesh {
+  if (!options.ensureWatertight && !options.onWatertightReport) return mesh;
+  const sealOpts: SealOptions = typeof options.ensureWatertight === 'object'
+    ? options.ensureWatertight
+    : {};
+  if (options.ensureWatertight) {
+    const result = ensureWatertight(mesh, sealOpts);
+    options.onWatertightReport?.(result.after);
+    return result.mesh;
+  }
+  // Report only.
+  const { analyzeWatertightness } = require('./meshWatertight') as typeof import('./meshWatertight');
+  options.onWatertightReport?.(analyzeWatertightness(mesh, sealOpts.weldEpsilon ?? 1e-6));
+  return mesh;
 }
 
 interface IteratedTriangle {
