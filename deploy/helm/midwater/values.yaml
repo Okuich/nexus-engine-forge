@@ -1,0 +1,230 @@
+# ------------------------------------------------------------------------------
+# Midwater Helm values
+#
+# Two workloads ship in this chart:
+#   * `web`    – the React/Vite SPA served via nginx
+#   * `worker` – the simplification job runner (consumes simplify-jobs queue)
+#
+# Each workload exposes:
+#   image / resources / replicas / autoscaling{hpa,metrics}
+# Set `worker.enabled: false` to deploy only the web tier.
+# ------------------------------------------------------------------------------
+
+global:
+  imageRegistry: ""        # prepended to every image.repository when set
+  imagePullSecrets: []     # e.g. [{ name: ghcr-creds }]
+  env: production
+  domain: app.midwater.io
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+  seccompProfile: { type: RuntimeDefault }
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: ["ALL"] }
+
+# ------------------------------------------------------------------------------
+# Web tier
+# ------------------------------------------------------------------------------
+web:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: midwater/web
+    tag: ""                # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/proxy-body-size: 64m
+    hosts:
+      - host: app.midwater.io
+        paths: [{ path: /, pathType: Prefix }]
+    tls:
+      - hosts: [app.midwater.io]
+        secretName: midwater-web-tls
+
+  resources:
+    requests: { cpu: 100m,  memory: 128Mi }
+    limits:   { cpu: 500m,  memory: 512Mi }
+
+  env: []                 # extra plain env vars
+  envFromSecrets: []      # ["midwater-web-secrets"]
+  envFromConfigMaps: []
+
+  livenessProbe:
+    httpGet: { path: /healthz, port: http }
+    initialDelaySeconds: 10
+    periodSeconds: 20
+  readinessProbe:
+    httpGet: { path: /readyz, port: http }
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  autoscaling:
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      # Standard resource metrics
+      targetCPUUtilizationPercentage: 65
+      targetMemoryUtilizationPercentage: 75
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - { type: Percent, value: 100, periodSeconds: 30 }
+            - { type: Pods,    value: 4,   periodSeconds: 30 }
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - { type: Percent, value: 25, periodSeconds: 60 }
+          selectPolicy: Min
+      # Custom / external metrics (Prometheus-Adapter or KEDA-fed)
+      # Each entry is an HPA v2 metric spec — see templates/web-hpa.yaml.
+      metrics:
+        - type: Pods
+          pods:
+            metric: { name: http_requests_per_second }
+            target: { type: AverageValue, averageValue: "150" }
+
+# ------------------------------------------------------------------------------
+# Worker tier (simplification queue drainer)
+# ------------------------------------------------------------------------------
+worker:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: midwater/simplify-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  command: []             # override entrypoint if needed
+  args: []
+
+  resources:
+    requests: { cpu: 500m,  memory: 1Gi }
+    limits:   { cpu: 2000m, memory: 4Gi }
+
+  env:
+    - name: WORKER_CONCURRENCY
+      value: "3"
+  envFromSecrets:
+    - midwater-supabase
+  envFromConfigMaps: []
+
+  livenessProbe:
+    exec: { command: ["/bin/sh", "-c", "test -f /tmp/alive"] }
+    initialDelaySeconds: 30
+    periodSeconds: 30
+  readinessProbe:
+    exec: { command: ["/bin/sh", "-c", "test -f /tmp/ready"] }
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  autoscaling:
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 80
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - { type: Pods, value: 4, periodSeconds: 15 }
+        scaleDown:
+          stabilizationWindowSeconds: 600
+          policies:
+            - { type: Pods, value: 1, periodSeconds: 120 }
+      # Queue-depth driven scaling. Requires the metric to be exposed by
+      # Prometheus-Adapter (`pods` / `external` rules) OR KEDA's metric server.
+      metrics:
+        - type: External
+          external:
+            metric:
+              name: simplify_jobs_queued
+              selector:
+                matchLabels: { queue: "simplify-jobs" }
+            target:
+              type: AverageValue
+              averageValue: "5"   # one pod per 5 queued jobs
+
+# ------------------------------------------------------------------------------
+# Autoscaling metrics infrastructure
+#
+# Two backends are supported (mutually exclusive). Both ship as toggles so the
+# chart can be installed standalone OR alongside an existing platform install.
+# ------------------------------------------------------------------------------
+metricsAdapter:
+  # Use prometheus-adapter (kubernetes-sigs) to expose Prometheus series as
+  # custom.metrics.k8s.io and external.metrics.k8s.io.
+  prometheusAdapter:
+    enabled: false
+    prometheusUrl: http://prometheus.monitoring.svc:9090
+    rules:
+      external:
+        - seriesQuery: 'simplify_jobs_queued{namespace!=""}'
+          resources: { template: <<.Resource>> }
+          name: { matches: "^(.*)$", as: "$1" }
+          metricsQuery: sum(<<.Series>>{<<.LabelMatchers>>}) by (queue)
+      custom:
+        - seriesQuery: 'http_requests_total{namespace!="",pod!=""}'
+          resources: { overrides: { namespace: { resource: namespace }, pod: { resource: pod } } }
+          name: { matches: "^(.*)_total$", as: "${1}_per_second" }
+          metricsQuery: sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)
+
+  # KEDA ScaledObjects — preferred for queue-driven scaling with scale-to-zero.
+  keda:
+    enabled: false
+    pollingInterval: 15
+    cooldownPeriod: 300
+    triggers:
+      worker:
+        - type: postgresql
+          metadata:
+            connectionFromEnv: SUPABASE_DB_URL
+            query: |
+              SELECT count(*) FROM public.simplification_jobs
+              WHERE status IN ('queued','running')
+            targetQueryValue: "5"
+
+# ------------------------------------------------------------------------------
+# ServiceMonitor for Prometheus Operator (optional)
+# ------------------------------------------------------------------------------
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+  relabelings: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []

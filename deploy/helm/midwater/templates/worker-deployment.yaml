@@ -1,0 +1,64 @@
+{{- if .Values.worker.enabled -}}
+{{- $ctx := dict "root" . "component" "worker" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "midwater.componentName" $ctx }}
+  labels:
+    {{- include "midwater.labels" . | nindent 4 }}
+    {{- include "midwater.selectorLabels" $ctx | nindent 4 }}
+spec:
+  {{- if and (not .Values.worker.autoscaling.hpa.enabled) (not .Values.metricsAdapter.keda.enabled) }}
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels: {{- include "midwater.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "midwater.selectorLabels" $ctx | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "midwater.serviceAccountName" . }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "midwater.image" (dict "root" . "img" .Values.worker.image) }}
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- with .Values.worker.command }}
+          command: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.worker.args }}
+          args: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - { name: APP_ENV, value: {{ .Values.global.env | quote }} }
+            {{- with .Values.worker.env }}{{- toYaml . | nindent 12 }}{{- end }}
+          {{- if or .Values.worker.envFromSecrets .Values.worker.envFromConfigMaps }}
+          envFrom:
+            {{- range .Values.worker.envFromSecrets }}
+            - secretRef: { name: {{ . }} }
+            {{- end }}
+            {{- range .Values.worker.envFromConfigMaps }}
+            - configMapRef: { name: {{ . }} }
+            {{- end }}
+          {{- end }}
+          livenessProbe: {{- toYaml .Values.worker.livenessProbe | nindent 12 }}
+          readinessProbe: {{- toYaml .Values.worker.readinessProbe | nindent 12 }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

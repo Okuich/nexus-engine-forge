@@ -1,0 +1,17 @@
+{{- if .Values.metricsAdapter.prometheusAdapter.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "midwater.fullname" . }}-prometheus-adapter
+  labels: {{- include "midwater.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    rules:
+      {{- with .Values.metricsAdapter.prometheusAdapter.rules.custom }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+    externalRules:
+      {{- with .Values.metricsAdapter.prometheusAdapter.rules.external }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+{{- end }}

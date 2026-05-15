@@ -1,0 +1,12 @@
+{{- if and .Values.web.enabled .Values.web.podDisruptionBudget.enabled -}}
+{{- $ctx := dict "root" . "component" "web" -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "midwater.componentName" $ctx }}
+  labels: {{- include "midwater.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.web.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "midwater.selectorLabels" $ctx | nindent 6 }}
+{{- end }}

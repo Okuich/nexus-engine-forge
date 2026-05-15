@@ -1,0 +1,22 @@
+{{- if and .Values.worker.enabled .Values.metricsAdapter.keda.enabled -}}
+{{- $ctx := dict "root" . "component" "worker" -}}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "midwater.componentName" $ctx }}
+  labels: {{- include "midwater.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "midwater.componentName" $ctx }}
+  pollingInterval: {{ .Values.metricsAdapter.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.metricsAdapter.keda.cooldownPeriod }}
+  minReplicaCount: {{ .Values.worker.autoscaling.hpa.minReplicas }}
+  maxReplicaCount: {{ .Values.worker.autoscaling.hpa.maxReplicas }}
+  {{- with .Values.worker.autoscaling.hpa.behavior }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior: {{- toYaml . | nindent 8 }}
+  {{- end }}
+  triggers:
+    {{- toYaml .Values.metricsAdapter.keda.triggers.worker | nindent 4 }}
+{{- end }}

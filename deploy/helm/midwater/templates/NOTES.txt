@@ -1,0 +1,22 @@
+Midwater {{ .Chart.AppVersion }} installed as {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+Components:
+{{- if .Values.web.enabled }}
+  • web      → svc/{{ .Release.Name }}-{{ include "midwater.name" . }}-web
+{{- end }}
+{{- if .Values.worker.enabled }}
+  • worker   → deploy/{{ .Release.Name }}-{{ include "midwater.name" . }}-worker
+{{- end }}
+
+Autoscaling:
+{{- if .Values.web.autoscaling.hpa.enabled }}
+  • web HPA   {{ .Values.web.autoscaling.hpa.minReplicas }}–{{ .Values.web.autoscaling.hpa.maxReplicas }} replicas (CPU {{ .Values.web.autoscaling.hpa.targetCPUUtilizationPercentage }}%)
+{{- end }}
+{{- if .Values.metricsAdapter.keda.enabled }}
+  • worker scales via KEDA ScaledObject (queue-driven, scale-to-{{ .Values.worker.autoscaling.hpa.minReplicas }})
+{{- else if .Values.worker.autoscaling.hpa.enabled }}
+  • worker HPA {{ .Values.worker.autoscaling.hpa.minReplicas }}–{{ .Values.worker.autoscaling.hpa.maxReplicas }} replicas
+{{- end }}
+
+Inspect with:
+  kubectl get hpa,scaledobject -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}

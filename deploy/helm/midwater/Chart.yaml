@@ -1,0 +1,17 @@
+apiVersion: v2
+name: midwater
+description: |
+  Helm chart for the Midwater / Fabrication OS web app and the
+  simplification worker. Ships sane defaults plus tunables for image,
+  resources, HPA, and Prometheus-Adapter / KEDA custom autoscaling metrics.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - midwater
+  - fabrication-os
+  - cad
+  - simplification
+maintainers:
+  - name: Platform
