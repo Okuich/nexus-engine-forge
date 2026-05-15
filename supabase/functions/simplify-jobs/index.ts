@@ -242,6 +242,26 @@ async function processJob(
 }
 
 // ─── HTTP handler ───────────────────────────────────────────────────────────
+import {
+  resolvePrincipal,
+  rateLimit,
+  rateLimitHeaders,
+  ROUTE_LIMITS,
+  mintApiKey,
+  type Scope,
+} from './auth.ts';
+
+function unauth(msg: string, status = 401) {
+  return new Response(JSON.stringify({ error: msg }), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+      'WWW-Authenticate': 'Bearer realm="simplify-jobs", ApiKey realm="simplify-jobs"',
+    },
+  });
+}
+
 async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -250,10 +270,36 @@ async function handle(req: Request): Promise<Response> {
 
   if (route === 'health') return jsonResponse({ ok: true });
 
-  const { user } = await getUser(req);
-  if (!user) return jsonResponse({ error: 'unauthorized' }, 401);
+  const principal = await resolvePrincipal(req);
+  if (!principal) return unauth('unauthorized');
 
-  const db = admin();
+  // Per-route rate limit + scope check.
+  const cfg = ROUTE_LIMITS[route];
+  if (cfg) {
+    if (cfg.scope && !principal.scopes.includes(cfg.scope as Scope)) {
+      return unauth(`missing scope: ${cfg.scope}`, 403);
+    }
+    const rl = rateLimit(principal, route, cfg);
+    if (!rl.allowed) {
+      return new Response(JSON.stringify({ error: 'rate limit exceeded' }), {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          ...rateLimitHeaders(rl, cfg),
+        },
+      });
+    }
+    // Stash for later response decoration via closure.
+    (req as unknown as { _rl: ReturnType<typeof rateLimitHeaders> })._rl =
+      rateLimitHeaders(rl, cfg);
+  }
+
+  // Shadow legacy `user` reference and use a single client (RLS-aware for JWT,
+  // service-role for API keys; both code paths still scope by principal.userId).
+  const user = { id: principal.userId };
+  const db = principal.via === 'api_key' ? principal.client : admin();
+
 
   // ── create ────────────────────────────────────────────────────────────────
   if (route === 'create' && req.method === 'POST') {
