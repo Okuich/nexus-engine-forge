@@ -26,7 +26,9 @@ import {
   type MeshFormat,
   type RawMeshIn,
 } from './parsers.ts';
+import { openApiSpec, swaggerHTML } from './openapi.ts';
 export { parseSTL, parseOBJ, parseUploadedMesh, inferMeshFormat } from './parsers.ts';
+export { openApiSpec } from './openapi.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -683,6 +685,15 @@ Deno.serve(async (req) => {
   const path = url.pathname.replace(/^.*\/simplify-api/, '') || '/';
   try {
     if (req.method === 'GET' && path === '/health') return json({ ok: true });
+    if (req.method === 'GET' && (path === '/openapi.json' || path === '/openapi')) {
+      return json(openApiSpec);
+    }
+    if (req.method === 'GET' && (path === '/docs' || path === '/docs/')) {
+      return new Response(swaggerHTML, {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
     if (path === '/graphql') return await handleGraphQL(req);
     if (req.method !== 'POST') return err('method_not_allowed', 405);
     if (path === '/lods') return await handleLODs(req);
