@@ -365,12 +365,33 @@ async function handleUpload(req: Request) {
     targetRatio: parseFloatField(form.get('targetRatio')),
   };
 
+  // Cache key uses raw upload bytes (cheaper than re-hashing the parsed mesh)
+  // plus format and option knobs.
+  const fileHash = await hashBytes(bytes);
+  const key = makeCacheKey({
+    route: 'upload',
+    meshHash: `${inferred}:${fileHash}`,
+    options: { lod: lodOptions, graph: graphOptions },
+  });
+  const cached = responseCache.get(key);
+  if (cached !== undefined) {
+    return new Response(cached, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'X-Cache': 'HIT',
+        'X-Cache-Key': fileHash,
+      },
+    });
+  }
+
   const t0 = performance.now();
   const lodResult = buildLODs(mesh, lodOptions);
   const m = meshToArrays(mesh);
   const graph = coarsenGraph(m, graphOptions.targetNodes, graphOptions.targetRatio);
 
-  return json({
+  const payload = {
     upload: {
       filename: file.name,
       format: inferred,
@@ -382,6 +403,17 @@ async function handleUpload(req: Request) {
     coarseMesh: lodResult.lods[lodResult.lods.length - 1].mesh,
     graph,
     elapsedMs: performance.now() - t0,
+  };
+  const serialized = JSON.stringify(payload);
+  responseCache.set(key, serialized, serialized.length);
+  return new Response(serialized, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+      'X-Cache': 'MISS',
+      'X-Cache-Key': fileHash,
+    },
   });
 }
 
