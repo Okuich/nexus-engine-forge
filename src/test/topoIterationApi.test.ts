@@ -139,8 +139,9 @@ describe('topo iteration preview API', () => {
     expect(seen).toHaveLength(0);
   });
 
-  it('streamSIMP terminates promptly when its signal aborts', async () => {
+  it('streamSIMP forwards a pre-aborted signal and stops the run', async () => {
     const ac = new AbortController();
+    ac.abort();
     const stream = streamSIMP(
       domain(), loads, supports,
       { maxIterations: 50 },
@@ -152,7 +153,29 @@ describe('topo iteration preview API', () => {
       const r = await stream.next();
       if (r.done) { result = r.value; break; }
       snaps.push((r.value as { iteration: number }).iteration);
-      if (snaps.length === 2) ac.abort();
+    }
+    expect((result as { cancelled?: boolean }).cancelled).toBe(true);
+    expect(snaps).toHaveLength(0);
+  });
+
+  it('streamSIMP stops mid-run when aborted from inside options.onIteration', async () => {
+    // runSIMP is synchronous, so cancellation must be requested from inside
+    // the per-iteration callback to actually preempt the loop.
+    const ac = new AbortController();
+    const stream = streamSIMP(
+      domain(), loads, supports,
+      {
+        maxIterations: 50,
+        onIteration: (s) => { if (s.iteration >= 2) ac.abort(); },
+      },
+      { signal: ac.signal },
+    );
+    const snaps: number[] = [];
+    let result: Awaited<ReturnType<typeof stream.next>>['value'] | undefined;
+    while (true) {
+      const r = await stream.next();
+      if (r.done) { result = r.value; break; }
+      snaps.push((r.value as { iteration: number }).iteration);
     }
     expect((result as { cancelled?: boolean }).cancelled).toBe(true);
     expect(snaps.length).toBeLessThan(10);
