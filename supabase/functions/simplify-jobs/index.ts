@@ -254,10 +254,15 @@ async function processJob(
       result_size_bytes: serialized.length,
       completed_at: new Date().toISOString(),
     });
+    span.event('job.completed', { input_triangles: tris, output_triangles: outputT });
+    span.setAttrs({ 'job.input_triangles': tris, 'job.output_triangles': outputT });
   } catch (err) {
+    const message = (err as Error).message;
+    span.event('job.failed', { error: message }, 'error');
+    span.setStatus('error', message);
     await update({
       status: 'failed',
-      error_message: (err as Error).message,
+      error_message: message,
       completed_at: new Date().toISOString(),
     });
   }
