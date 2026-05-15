@@ -39,6 +39,21 @@ export interface IterationSnapshot {
   volumeFraction: number;
   change: number;
   elapsedMs: number;
+  /**
+   * Downsampled density grid for live previews. Present on intermediate
+   * iterations only; suppressed when `includeDensity === false`.
+   * Layout: x-fastest, length = previewDims[0]*previewDims[1]*previewDims[2].
+   */
+  densityPreview?: number[];
+  previewDims?: [number, number, number];
+  /**
+   * Full-resolution density grid. Emitted only on the FINAL iteration when
+   * `includeDensity` is enabled, to keep intermediate payloads small.
+   */
+  density?: number[];
+  dims?: [number, number, number];
+  /** True on the last iteration of the run. */
+  isFinal?: boolean;
 }
 
 export interface StreamOptions {
@@ -48,6 +63,12 @@ export interface StreamOptions {
   maxIterations?: number;
   /** Target volume fraction the simulated run converges toward (default 0.4). */
   volumeFraction?: number;
+  /** Emit density data at all (default true). */
+  includeDensity?: boolean;
+  /** Edge length of the downsampled preview cube (default 8, range 2-16). */
+  previewSize?: number;
+  /** Edge length of the full density cube emitted on the final iteration (default 24, range 4-48). */
+  fullSize?: number;
 }
 
 function sseEvent(event: string, data: unknown): string {
