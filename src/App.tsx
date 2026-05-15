@@ -22,6 +22,7 @@ import Pricing from "./pages/Pricing.tsx";
 import ROICalculator from "./pages/ROICalculator.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import SpatialDebug from "./pages/SpatialDebug.tsx";
+import TopologyOptimizer from "./pages/TopologyOptimizer.tsx";
 
 const queryClient = new QueryClient();
 
