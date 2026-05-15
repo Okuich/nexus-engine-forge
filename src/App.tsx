@@ -17,7 +17,7 @@ import Prospects from "./pages/Prospects.tsx";
 import CRM from "./pages/CRM.tsx";
 import Marketplace from "./pages/Marketplace.tsx";
 import Admin from "./pages/Admin.tsx";
-import Fabrication from "./pages/Fabrication.tsx";
+
 import Pricing from "./pages/Pricing.tsx";
 import ROICalculator from "./pages/ROICalculator.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -68,7 +68,7 @@ function AppRoutes() {
         <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
         <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-        <Route path="/fabrication" element={<ProtectedRoute><Fabrication /></ProtectedRoute>} />
+        
         <Route path="/spatial-debug" element={<ProtectedRoute><SpatialDebug /></ProtectedRoute>} />
         <Route path="/topology" element={<ProtectedRoute><TopologyOptimizer /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
