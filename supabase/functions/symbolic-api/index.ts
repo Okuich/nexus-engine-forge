@@ -238,6 +238,152 @@ async function parseEnvelope<S extends z.ZodTypeAny>(
   return parsed.data;
 }
 
+// ─── GraphQL (minimal hand-rolled resolver) ────────────────────────────────
+
+const SDL = `
+"""Symbolic Geometry Engine — type contracts shared with REST."""
+scalar JSON
+
+type Query {
+  health: String!
+  schema: String!
+  backends: [Backend!]!
+}
+
+type Mutation {
+  createSymbol(symbol: SymbolInput!, backend: String): SymbolResult!
+  createPrimitive(kind: String!, spec: JSON!, backend: String): PrimitiveResult!
+  createExpression(source: JSON!, backend: String): ExprResult!
+  solve(
+    symbols: [SymbolInput!]!,
+    constraints: [ConstraintInput!]!,
+    initialGuess: [BindingInput!],
+    backend: String,
+  ): SolveResult!
+  evaluate(
+    expression: ExprInput!,
+    bindings: [BindingInput!]!,
+    backend: String,
+  ): ScalarResult!
+}
+
+type Backend { id: String!, version: String!, capabilities: JSON! }
+
+input SymbolInput {
+  id: String!
+  name: String!
+  domain: String
+  defaultValue: Float
+}
+input ExprInput { backendId: String!, handle: JSON, debug: String }
+input ScalarInput { form: String!, value: JSON! }
+input ConstraintInput {
+  id: String!
+  kind: String!
+  operands: [String!]!
+  value: ScalarInput
+  expression: ExprInput
+}
+input BindingInput { symbolId: String!, value: ScalarInput! }
+
+type Expr { backendId: String!, handle: JSON, debug: String }
+type Scalar { form: String!, value: JSON! }
+type Primitive {
+  id: String!
+  kind: String!
+  symbols: [String!]!
+  representation: Expr!
+  metadata: JSON
+}
+type Binding { symbolId: String!, value: Scalar! }
+type SolveOutcome {
+  status: String!
+  bindings: [Binding!]!
+  residual: Float
+  message: String
+}
+
+# Result wrappers carry the canonical wire envelope so clients can
+# round-trip through the same serialization helpers as REST.
+type SymbolResult { envelope: JSON! }
+type PrimitiveResult { envelope: JSON!, primitive: Primitive }
+type ExprResult { envelope: JSON!, expr: Expr }
+type ScalarResult { envelope: JSON!, scalar: Scalar }
+type SolveResult { envelope: JSON!, outcome: SolveOutcome }
+`.trim();
+
+interface GqlReq { query?: string; variables?: Record<string, unknown>; operationName?: string }
+
+function gqlJson(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(canonicalize(payload)), {
+    status,
+    headers: { ...corsHeaders, 'content-type': 'application/json' },
+  });
+}
+
+function gqlError(message: string, extensions?: Record<string, unknown>, status = 200): Response {
+  return gqlJson({ errors: [{ message, extensions }] }, status);
+}
+
+/**
+ * Match the first top-level field name in the GraphQL operation. We don't
+ * ship a full parser — operations are dispatched by name + variables, which
+ * is sufficient for the small surface this API exposes.
+ */
+function detectOperation(query: string): string | null {
+  const m = query.match(
+    /\b(createSymbol|createPrimitive|createExpression|solve|evaluate|backends|health|schema)\b/,
+  );
+  return m ? m[1] : null;
+}
+
+async function handleGraphQL(req: Request): Promise<Response> {
+  if (req.method === 'GET') {
+    return gqlJson({ data: { schema: SDL } });
+  }
+  let body: GqlReq;
+  try { body = await req.json() as GqlReq; }
+  catch { return gqlError('invalid JSON body', undefined, 400); }
+
+  const query = body.query ?? '';
+  const vars = body.variables ?? {};
+  const op = detectOperation(query);
+  if (!op) return gqlError('unsupported_operation');
+
+  try {
+    if (op === 'health') return gqlJson({ data: { health: 'ok' } });
+    if (op === 'schema') return gqlJson({ data: { schema: SDL } });
+    if (op === 'backends') {
+      return gqlJson({ data: { backends: Object.values(BACKENDS) } });
+    }
+
+    // All mutations share the same dispatch shape: validate via the REST
+    // schema, resolve the backend, surface NotImplemented as a GraphQL error.
+    const opMap = {
+      createSymbol: { schema: SymbolReq, label: 'createSymbol' },
+      createPrimitive: { schema: PrimitiveReq, label: 'createPrimitive' },
+      createExpression: { schema: ExpressionReq, label: 'createExpression' },
+      solve: { schema: SolveReq, label: 'solve' },
+      evaluate: { schema: EvaluateReq, label: 'evaluate' },
+    } as const;
+    const cfg = opMap[op as keyof typeof opMap];
+    if (!cfg) return gqlError(`unsupported_operation: ${op}`);
+
+    const parsed = cfg.schema.safeParse(vars);
+    if (!parsed.success) {
+      return gqlError('invalid_variables', { issues: parsed.error.flatten() }, 400);
+    }
+    const backendId = resolveBackendId((parsed.data as { backend?: string }).backend);
+    notImplemented(cfg.label, backendId);
+  } catch (e) {
+    if (e instanceof HttpError) {
+      const code = e.status === 501 ? 'NOT_IMPLEMENTED' : 'BAD_REQUEST';
+      return gqlError(e.message, { code, status: e.status, details: e.details });
+    }
+    return gqlError(e instanceof Error ? e.message : 'internal_error', { code: 'INTERNAL' }, 500);
+  }
+}
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
