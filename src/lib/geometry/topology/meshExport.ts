@@ -114,6 +114,7 @@ export function exportSTL(mesh: RawMesh, options: ExportOptions = {}): string {
 // ─────────────────────────────────────────────────────────────────────────
 
 export function exportSTLBinary(mesh: RawMesh, options: ExportOptions = {}): Uint8Array {
+  mesh = preprocess(mesh, options);
   const triCount = countTriangles(mesh);
   const buffer = new ArrayBuffer(84 + 50 * triCount);
   const view = new DataView(buffer);
