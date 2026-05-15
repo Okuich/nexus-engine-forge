@@ -191,6 +191,8 @@ export const ROUTE_LIMITS: Record<string, RouteLimit & { scope?: Scope }> = {
   batchStatus: { capacity: 600, windowMs: 60_000, scope: 'jobs:read'  },
   list:        { capacity: 120, windowMs: 60_000, scope: 'jobs:read'  },
   batchList:   { capacity: 120, windowMs: 60_000, scope: 'jobs:read'  },
+  stream:      { capacity: 60,  windowMs: 60_000, scope: 'jobs:read'  },
+  batchStream: { capacity: 30,  windowMs: 60_000, scope: 'jobs:read'  },
 };
 
 export function rateLimitHeaders(
