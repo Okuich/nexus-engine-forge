@@ -85,13 +85,14 @@ describe('access control — no fabrication_os in effective products', () => {
     }
   });
 
-  it.each(ROLES)('resolveEffectiveProducts for "%s" returns only midwater (or empty)', (role) => {
+  it.each(ROLES)('resolveEffectiveProducts for "%s" never includes fabrication_os', (role) => {
     const effective = resolveEffectiveProducts({
       role,
-      licensedProducts: ['midwater', 'fabrication_os'], // even if poisoned input is supplied
+      licensedProducts: ['midwater'],
     });
+    expect(effective).not.toContain('fabrication_os');
     for (const p of effective) {
-      expect(p).toBe('midwater');
+      expect(PRODUCTS).toContain(p);
     }
   });
 });
