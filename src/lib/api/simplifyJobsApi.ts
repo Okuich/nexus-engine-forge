@@ -34,10 +34,23 @@ export interface SimplificationJob {
   downloadUrl?: string | null;
 }
 
+export interface SimplificationJobParams {
+  /** LOD chain length (1–6). Used by `lods` and `inference`. */
+  levels?: number;
+  /** Triangle reduction per LOD level. */
+  ratioPerLevel?: number;
+  /** Floor for LOD output. */
+  minTriangles?: number;
+  /** Hard target node count for `graph` / `inference`. */
+  targetNodes?: number;
+  /** Or, fraction of original faces to keep. */
+  targetRatio?: number;
+}
+
 export interface CreateJobInput {
   mesh: { positions: number[]; indices?: number[] };
   jobType?: SimplificationJobType;
-  params?: { levels?: number };
+  params?: SimplificationJobParams;
 }
 
 async function invoke<T>(path: string, init?: { method?: 'GET' | 'POST'; body?: unknown; query?: Record<string, string> }): Promise<T> {
