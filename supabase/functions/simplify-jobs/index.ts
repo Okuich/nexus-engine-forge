@@ -679,13 +679,50 @@ async function handle(req: Request): Promise<Response> {
   return jsonResponse({ error: 'not found' }, 404);
 }
 
-// Wrap handle() to decorate successful responses with rate-limit headers.
+// Wrap handle() to start a trace span, decorate every response with trace +
+// rate-limit headers, and emit a structured access log.
 async function handleWithHeaders(req: Request): Promise<Response> {
-  const res = await handle(req);
-  const rl = (req as unknown as { _rl?: Record<string, string> })._rl;
-  if (!rl) return res;
+  const url = new URL(req.url);
+  const route = url.pathname.split('/').pop() ?? '';
+  const span = startSpanFromRequest(req, `http.${req.method} ${route || '/'}`);
+  span.setAttr('http.route', route);
+  // Stash so handlers + processJob can grab the active span.
+  (req as unknown as { _span: Span })._span = span;
+
+  let res: Response;
+  try {
+    res = await handle(req);
+  } catch (err) {
+    const message = (err as Error).message;
+    span.setStatus('error', message);
+    span.event('http.error', { error: message }, 'error');
+    res = new Response(
+      JSON.stringify({ error: 'internal error', traceId: span.traceId }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
+  }
+
+  span.setAttr('http.status_code', res.status);
+  if (res.status >= 500) span.setStatus('error', `HTTP ${res.status}`);
+
   const merged = new Headers(res.headers);
-  for (const [k, v] of Object.entries(rl)) merged.set(k, v);
+  const rl = (req as unknown as { _rl?: Record<string, string> })._rl;
+  if (rl) for (const [k, v] of Object.entries(rl)) merged.set(k, v);
+  for (const [k, v] of Object.entries(traceResponseHeaders(span))) merged.set(k, v);
+
+  log('info', 'http.response', {
+    trace_id: span.traceId,
+    span_id: span.spanId,
+    method: req.method,
+    route,
+    status: res.status,
+    duration_ms: Date.now() - span.startMs,
+  });
+  span.end();
+
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: merged });
 }
 
