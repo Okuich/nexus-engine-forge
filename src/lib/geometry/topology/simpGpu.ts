@@ -614,14 +614,23 @@ function emitTelemetry(record: SimpAutoTelemetry): void {
 
 /**
  * Run SIMP on the GPU when available, otherwise fall back to the CPU
- * implementation. The result always carries a discriminated `backend`
- * field plus `elapsedMs` and a `fellBack` flag describing whether a GPU
- * attempt was made and downgraded.
+ * implementation. Always returns a {@link SimpAutoResult} carrying the
+ * discriminated `backend` tag, `elapsedMs`, `fellBack`, and (when
+ * applicable) `fallbackReason`.
  *
- * Fallback triggers:
- *   • `navigator.gpu` missing or `requestAdapter()` returned null
- *   • `runSIMPGPU` threw (compile error, device lost, OOM, etc.)
- *   • caller passed `forceCpu: true`
+ * Dispatch order:
+ *   1. `forceCpu: true` → CPU directly. `fellBack: false`, no `fallbackReason`
+ *      (no GPU attempt was made — this is an explicit opt-out, not a downgrade).
+ *      Use it for deterministic benchmarks, parity tests, or to bypass a
+ *      known-bad GPU driver without losing GPU-success semantics elsewhere.
+ *   2. `navigator.gpu` absent or no adapter → CPU. `fellBack: true`,
+ *      `fallbackReason: 'webgpu_unavailable'`.
+ *   3. GPU run throws (`WebGPUUnavailableError`, compile error, device lost,
+ *      OOM, etc.) → CPU. `fellBack: true`, `fallbackReason` carries the
+ *      original error message (prefixed `gpu_run_failed:` for non-WebGPU errors).
+ *   4. GPU run succeeds → GPU result with `fellBack: false`.
+ *
+ * Telemetry for every run is emitted via {@link onSimpAutoTelemetry}.
  */
 export async function runSIMPAuto(
   domain: VoxelDomain,
