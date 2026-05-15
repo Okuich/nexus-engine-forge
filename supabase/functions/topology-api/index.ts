@@ -77,7 +77,7 @@ function envelope<T>(type: string, data: T) {
   return { $schema: SCHEMA, type, data };
 }
 
-async function parseRequest(req: Request): Promise<ComplianceRequest> {
+async function parseRequest(req: Request): Promise<ComplianceRequestT> {
   let raw: unknown;
   try { raw = await req.json(); }
   catch { throw new HttpError(400, 'invalid JSON body'); }
