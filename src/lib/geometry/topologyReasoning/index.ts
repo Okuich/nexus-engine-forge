@@ -87,3 +87,18 @@ export type {
   GraphTransform,
   TopologyResult,
 } from './types';
+
+// ── Geometry Engine integration hooks ────────────────────────────
+export {
+  planDispatch,
+  adaptFaceAdjacency,
+  adaptEdgeList,
+  analyzeFaceAdjacency,
+  findCriticalFaces,
+} from './integration';
+export type {
+  DispatchPlan,
+  CreateGraphSpec,
+  AnalyzeAdjacencyOptions,
+  AnalyzeAdjacencyResult,
+} from './integration';
