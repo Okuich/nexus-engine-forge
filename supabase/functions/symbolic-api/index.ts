@@ -397,6 +397,8 @@ Deno.serve(async (req: Request) => {
       return ok('scalar', { form: 'number', value: 1 });
     }
 
+    if (path === '/graphql') return await handleGraphQL(req);
+
     if (req.method === 'GET' && path === '/backends') {
       return new Response(
         JSON.stringify(canonicalize({
