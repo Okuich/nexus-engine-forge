@@ -494,7 +494,7 @@ async function handle(req: Request): Promise<Response> {
           const p = prepared[myIdx];
           const jobId = indexToId.get(p.idx)!;
           try {
-            await processJob(jobId, user.id, p.mesh, p.jobType, p.params);
+            await processJob(jobId, user.id, p.mesh, p.jobType, p.params, batchSpan);
           } catch (_) {
             // processJob already records failure; keep draining.
           }
