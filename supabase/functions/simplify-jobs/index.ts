@@ -413,7 +413,68 @@ async function handle(req: Request): Promise<Response> {
     return jsonResponse({ ok: true });
   }
 
-  // ── list ──────────────────────────────────────────────────────────────────
+  // ── retry ─────────────────────────────────────────────────────────────────
+  // Re-run a failed/cancelled job using its original job_type + params.
+  // The mesh is NOT stored server-side, so the client must resupply it.
+  if (route === 'retry' && req.method === 'POST') {
+    const RetryBody = z.object({ jobId: z.string().uuid(), mesh: MeshSchema });
+    const parsed = RetryBody.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return jsonResponse({ error: parsed.error.flatten() }, 400);
+
+    const { data: orig, error: fetchErr } = await db
+      .from('simplification_jobs')
+      .select('id,user_id,job_type,status,params,batch_id,batch_index,batch_label')
+      .eq('id', parsed.data.jobId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (fetchErr) return jsonResponse({ error: fetchErr.message }, 500);
+    if (!orig) return jsonResponse({ error: 'not found' }, 404);
+    if (orig.status !== 'failed' && orig.status !== 'cancelled') {
+      return jsonResponse(
+        { error: `job is ${orig.status}; only failed or cancelled jobs can be retried` },
+        409,
+      );
+    }
+
+    const tris = parsed.data.mesh.indices
+      ? parsed.data.mesh.indices.length / 3
+      : (parsed.data.mesh.positions.length / 9) | 0;
+    if (tris > MAX_INPUT_TRIANGLES) {
+      return jsonResponse({ error: `triangles exceed ${MAX_INPUT_TRIANGLES}` }, 413);
+    }
+
+    const jobType = (orig.job_type ?? 'lods') as 'lods' | 'graph' | 'inference';
+    const paramsParsed = ParamsSchema.safeParse(orig.params ?? {});
+    const params = paramsParsed.success ? paramsParsed.data : {};
+
+    const { data: created, error: insErr } = await db
+      .from('simplification_jobs')
+      .insert({
+        user_id: user.id,
+        job_type: jobType,
+        status: 'queued',
+        progress: 0,
+        message: 'queued (retry)',
+        params: { ...params, retry_of: orig.id },
+        input_triangles: tris,
+        batch_id: orig.batch_id,
+        batch_index: orig.batch_index,
+        batch_label: orig.batch_label,
+      })
+      .select('id')
+      .single();
+    if (insErr) return jsonResponse({ error: insErr.message }, 500);
+
+    const reqSpan = (req as unknown as { _span?: Span })._span;
+    const work = processJob(created.id, user.id, parsed.data.mesh, jobType, params, reqSpan);
+    if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work);
+    else void work;
+
+    return jsonResponse(
+      { jobId: created.id, status: 'queued', retryOf: orig.id, traceId: reqSpan?.traceId },
+      202,
+    );
+  }
   if (route === 'list' && req.method === 'GET') {
     const limit = Math.min(100, Number(url.searchParams.get('limit') ?? 25));
     const { data, error } = await db
