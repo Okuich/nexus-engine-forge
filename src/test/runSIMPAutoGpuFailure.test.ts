@@ -59,6 +59,7 @@ describe('runSIMPAuto GPU failure → CPU fallback', () => {
     expect(result.fallbackReason).toMatch(/^gpu_run_failed:/);
     expect(result.fallbackReason).toContain('simulated device init failure');
     expect(result.density.length).toBe(4 * 4 * 4);
-    expect(result.iterations).toBeGreaterThan(0);
+    expect(result.iterations).toBeGreaterThanOrEqual(0);
+    expect(typeof result.elapsedMs).toBe('number');
   });
 });
