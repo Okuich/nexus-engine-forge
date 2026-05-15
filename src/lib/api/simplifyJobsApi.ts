@@ -77,6 +77,20 @@ export const simplifyJobsApi = {
   cancel: (jobId: string) =>
     invoke<{ ok: true }>('cancel', { method: 'POST', body: { jobId } }),
 
+  /**
+   * Re-run a failed or cancelled job using its original `job_type` + `params`.
+   * The mesh is not stored server-side, so the caller must resupply it
+   * (typically from the local CAD viewer cache).
+   *
+   * Returns the **new** jobId; the original row is left untouched. The new
+   * job's `params.retry_of` field links back to the original.
+   */
+  retry: (jobId: string, mesh: { positions: number[]; indices?: number[] }) =>
+    invoke<{ jobId: string; status: SimplificationJobStatus; retryOf: string }>('retry', {
+      method: 'POST',
+      body: { jobId, mesh },
+    }),
+
   list: (limit = 25) =>
     invoke<{ jobs: SimplificationJob[] }>('list', {
       method: 'GET',
