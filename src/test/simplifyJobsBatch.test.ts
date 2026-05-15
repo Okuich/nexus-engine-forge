@@ -65,13 +65,11 @@ describe('simplifyJobsApi.createBatch', () => {
     expect(opts.body.concurrency).toBe(2);
   });
 
-  it('rejects empty item arrays at the type boundary', async () => {
-    // Type-level check; runtime validation lives in the edge function.
+  it('surfaces edge-function errors verbatim', async () => {
     invokeMock.mockResolvedValueOnce({ data: null, error: new Error('items required') });
     await expect(
-      // @ts-expect-error empty array is intentionally invalid
-      simplifyJobsApi.createBatch({ items: [] }),
-    ).rejects.toThrow();
+      simplifyJobsApi.createBatch({ items: [{ mesh: tri }] }),
+    ).rejects.toThrow(/items required/);
   });
 });
 
