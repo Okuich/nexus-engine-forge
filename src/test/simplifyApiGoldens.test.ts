@@ -106,10 +106,13 @@ describe('simplify-api goldens — LOD counts', () => {
     expect(lods[0].stats.outputTriangles).toBe(12);
     expect(lods[0].ratio).toBe(1);
 
-    // 12-triangle cube collapses fast — chain stops once it hits the floor.
+    // Cube vertices already snap into distinct grid cells at every requested
+    // resolution, so all LODs are identity copies. The chain length is
+    // exactly levels+1 and every level reports 12 triangles.
     const triCounts = lods.map((l) => l.stats.outputTriangles);
-    expect(triCounts).toEqual([12]); // no further LODs viable above minTriangles
-    expect(lods.length).toBe(1);
+    expect(triCounts).toEqual([12, 12, 12, 12]);
+    expect(lods.length).toBe(4);
+    for (const l of lods) expect(l.stats.outputTriangles).toBe(12);
   });
 
   it('sphere produces a monotonically decreasing LOD chain', () => {
