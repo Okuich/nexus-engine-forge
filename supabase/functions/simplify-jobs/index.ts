@@ -621,7 +621,184 @@ async function handle(req: Request): Promise<Response> {
     return jsonResponse({ batches: data });
   }
 
-  // ── API key management (JWT only — never expose to API-key callers) ─────
+  // ── stream / batchStream: SSE push of job/batch status ───────────────────
+  // Replaces client-side polling. The server polls the DB on a tight cadence
+  // and only emits an event when the snapshot meaningfully changes
+  // (status / progress / message), plus a periodic keepalive comment.
+  if ((route === 'stream' || route === 'batchStream') && req.method === 'GET') {
+    const id = url.searchParams.get('id');
+    if (!id) return jsonResponse({ error: 'id required' }, 400);
+
+    const reqSpan = (req as unknown as { _span?: Span })._span;
+    const sseSpan = reqSpan?.child(`sse.${route}`).setAttrs({ 'sse.target_id': id });
+
+    const isBatch = route === 'batchStream';
+    const tickMs = Math.max(
+      250,
+      Math.min(5_000, Number(url.searchParams.get('intervalMs') ?? 750)),
+    );
+    const maxMs = Math.max(
+      5_000,
+      Math.min(30 * 60_000, Number(url.searchParams.get('maxMs') ?? 10 * 60_000)),
+    );
+    const keepaliveMs = 15_000;
+
+    const fetchSnapshot = async (): Promise<Record<string, unknown> | null> => {
+      if (isBatch) {
+        const { data: batch } = await db
+          .from('simplification_batches')
+          .select('id,status,total_jobs,completed_at,updated_at')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (!batch) return null;
+        const { data: jobs } = await db
+          .from('simplification_jobs')
+          .select('id,batch_index,status,progress,message')
+          .eq('batch_id', id)
+          .eq('user_id', user.id);
+        const tally = { queued: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
+        let progressSum = 0;
+        for (const j of jobs ?? []) {
+          tally[j.status as keyof typeof tally] =
+            (tally[j.status as keyof typeof tally] ?? 0) + 1;
+          progressSum += j.progress ?? 0;
+        }
+        const progress = jobs && jobs.length > 0
+          ? Math.round(progressSum / jobs.length)
+          : 0;
+        return { batch, jobs, tally, progress };
+      } else {
+        const { data: job } = await db
+          .from('simplification_jobs')
+          .select('*')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (!job) return null;
+        let downloadUrl: string | null = null;
+        if (job.status === 'completed' && job.result_path) {
+          const { data: signed } = await db.storage
+            .from(BUCKET)
+            .createSignedUrl(job.result_path, 60 * 10);
+          downloadUrl = signed?.signedUrl ?? null;
+        }
+        return { ...job, downloadUrl };
+      }
+    };
+
+    const terminal = (snap: Record<string, unknown>): boolean => {
+      const status = isBatch
+        ? (snap.batch as { status: string } | undefined)?.status
+        : (snap.status as string | undefined);
+      return ['completed', 'failed', 'cancelled', 'partial'].includes(status ?? '');
+    };
+
+    const fingerprint = (snap: Record<string, unknown>): string => {
+      if (isBatch) {
+        const b = snap.batch as { status?: string };
+        return JSON.stringify({ s: b?.status, t: snap.tally, p: snap.progress });
+      }
+      return JSON.stringify({
+        s: snap.status,
+        p: snap.progress,
+        m: snap.message,
+      });
+    };
+
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    let eventCount = 0;
+    const startedAt = Date.now();
+
+    const stream = new ReadableStream<Uint8Array>({
+      start: async (controller) => {
+        const send = (event: string, data: unknown) => {
+          controller.enqueue(
+            encoder.encode(
+              `event: ${event}\nid: ${++eventCount}\ndata: ${JSON.stringify(data)}\n\n`,
+            ),
+          );
+        };
+        const ping = () => controller.enqueue(encoder.encode(`: keepalive\n\n`));
+
+        // Initial snapshot.
+        const initial = await fetchSnapshot();
+        if (!initial) {
+          send('error', { error: 'not found' });
+          controller.close();
+          sseSpan?.setStatus('error', 'not found').end();
+          return;
+        }
+        send('snapshot', { traceId: reqSpan?.traceId, ...initial });
+        sseSpan?.event('sse.open', { id });
+        if (terminal(initial)) {
+          send('done', { reason: 'terminal' });
+          controller.close();
+          sseSpan?.setAttr('sse.events', eventCount).end();
+          return;
+        }
+
+        let lastFp = fingerprint(initial);
+        let lastKeepalive = Date.now();
+
+        try {
+          while (!cancelled) {
+            await new Promise((r) => setTimeout(r, tickMs));
+            if (cancelled) break;
+            if (Date.now() - startedAt > maxMs) {
+              send('done', { reason: 'timeout' });
+              break;
+            }
+            const snap = await fetchSnapshot();
+            if (!snap) {
+              send('error', { error: 'not found' });
+              break;
+            }
+            const fp = fingerprint(snap);
+            if (fp !== lastFp) {
+              send('progress', snap);
+              lastFp = fp;
+              sseSpan?.event('sse.progress');
+            } else if (Date.now() - lastKeepalive > keepaliveMs) {
+              ping();
+              lastKeepalive = Date.now();
+            }
+            if (terminal(snap)) {
+              send('done', { reason: 'terminal' });
+              break;
+            }
+          }
+        } catch (err) {
+          send('error', { error: (err as Error).message });
+          sseSpan?.setStatus('error', (err as Error).message);
+        } finally {
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+          sseSpan?.setAttr('sse.events', eventCount).setAttr('sse.duration_ms', Date.now() - startedAt).end();
+        }
+      },
+      cancel: () => {
+        cancelled = true;
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        ...traceResponseHeaders(reqSpan ?? sseSpan!),
+      },
+    });
+  }
+
   if (route.startsWith('keys')) {
     if (principal.via !== 'jwt') return unauth('api keys cannot manage keys', 403);
     const adminDb = admin();

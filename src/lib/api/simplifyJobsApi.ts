@@ -224,3 +224,125 @@ export async function waitForSimplificationBatch(
     await new Promise((r) => setTimeout(r, interval));
   }
 }
+
+// ─── Server-Sent Events (push, no polling) ─────────────────────────────────
+//
+// EventSource cannot send custom headers, so we pass the access token as a
+// query parameter. The edge function accepts `?access_token=…` for SSE routes.
+const FN_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/simplify-jobs`;
+
+async function buildSseUrl(
+  route: 'stream' | 'batchStream',
+  id: string,
+  intervalMs?: number,
+): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('not authenticated');
+  const params = new URLSearchParams({ id, access_token: token });
+  if (intervalMs) params.set('intervalMs', String(intervalMs));
+  return `${FN_BASE}/${route}?${params.toString()}`;
+}
+
+export interface StreamHandlers<T> {
+  onSnapshot?: (snap: T) => void;
+  onProgress?: (snap: T) => void;
+  onDone?: (reason: 'terminal' | 'timeout') => void;
+  onError?: (err: Error) => void;
+  /** Server-side polling cadence in ms (250–5000). Default 750. */
+  intervalMs?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Subscribe to live job updates via SSE (push). Resolves with the final
+ * snapshot when the job reaches a terminal state. Rejects on error/abort.
+ */
+export function streamSimplificationJob(
+  jobId: string,
+  handlers: StreamHandlers<SimplificationJob> = {},
+): Promise<SimplificationJob> {
+  return openStream<SimplificationJob>('stream', jobId, handlers);
+}
+
+/** Subscribe to live batch updates via SSE. */
+export function streamSimplificationBatch(
+  batchId: string,
+  handlers: StreamHandlers<BatchStatusResult> = {},
+): Promise<BatchStatusResult> {
+  return openStream<BatchStatusResult>('batchStream', batchId, handlers);
+}
+
+function openStream<T>(
+  route: 'stream' | 'batchStream',
+  id: string,
+  handlers: StreamHandlers<T>,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let es: EventSource | null = null;
+    let last: T | undefined;
+
+    const cleanup = () => {
+      es?.close();
+      es = null;
+      handlers.signal?.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new Error('aborted'));
+    };
+    if (handlers.signal?.aborted) return reject(new Error('aborted'));
+    handlers.signal?.addEventListener('abort', onAbort);
+
+    buildSseUrl(route, id, handlers.intervalMs)
+      .then((url) => {
+        es = new EventSource(url);
+
+        es.addEventListener('snapshot', (e) => {
+          last = JSON.parse((e as MessageEvent).data) as T;
+          handlers.onSnapshot?.(last);
+        });
+        es.addEventListener('progress', (e) => {
+          last = JSON.parse((e as MessageEvent).data) as T;
+          handlers.onProgress?.(last);
+        });
+        es.addEventListener('done', (e) => {
+          const { reason } = JSON.parse((e as MessageEvent).data) as {
+            reason: 'terminal' | 'timeout';
+          };
+          handlers.onDone?.(reason);
+          cleanup();
+          if (last) resolve(last);
+          else reject(new Error('stream closed without snapshot'));
+        });
+        // Server-emitted errors arrive as `event: error` with a JSON payload.
+        es.addEventListener('error', (e) => {
+          const data = (e as MessageEvent).data;
+          if (data) {
+            try {
+              const { error } = JSON.parse(data) as { error: string };
+              const err = new Error(error);
+              handlers.onError?.(err);
+              cleanup();
+              reject(err);
+              return;
+            } catch {
+              /* not a server payload — fall through */
+            }
+          }
+          // Transport-level error (network blip). EventSource auto-reconnects;
+          // we only fail the promise once the connection is permanently CLOSED.
+          if (es?.readyState === EventSource.CLOSED) {
+            const err = new Error('stream connection closed');
+            handlers.onError?.(err);
+            cleanup();
+            reject(err);
+          }
+        });
+      })
+      .catch((err) => {
+        cleanup();
+        reject(err);
+      });
+  });
+}
