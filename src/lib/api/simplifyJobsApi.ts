@@ -81,7 +81,85 @@ export const simplifyJobsApi = {
       method: 'GET',
       query: { limit: String(limit) },
     }).then((r) => r.jobs),
+
+  // ── Batch (queue-backed bulk) ────────────────────────────────────────────
+  createBatch: (input: CreateBatchInput) =>
+    invoke<CreateBatchResult>('batch', { method: 'POST', body: input }),
+
+  batchStatus: (batchId: string) =>
+    invoke<BatchStatusResult>('batchStatus', {
+      method: 'GET',
+      query: { id: batchId },
+    }),
+
+  cancelBatch: (batchId: string) =>
+    invoke<{ ok: true }>('batchCancel', { method: 'POST', body: { batchId } }),
+
+  listBatches: (limit = 25) =>
+    invoke<{ batches: SimplificationBatch[] }>('batchList', {
+      method: 'GET',
+      query: { limit: String(limit) },
+    }).then((r) => r.batches),
 };
+
+export interface SimplificationBatch {
+  id: string;
+  user_id: string;
+  name: string | null;
+  total_jobs: number;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'partial';
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface BatchItemInput {
+  label?: string;
+  mesh: { positions: number[]; indices?: number[] };
+  jobType?: SimplificationJobType;
+  params?: SimplificationJobParams;
+}
+
+export interface CreateBatchInput {
+  name?: string;
+  defaults?: { jobType?: SimplificationJobType; params?: SimplificationJobParams };
+  /** Max parallel job runs (1–8). Defaults to 3 server-side. */
+  concurrency?: number;
+  items: BatchItemInput[];
+}
+
+export interface CreateBatchResult {
+  batchId: string;
+  status: 'queued';
+  total: number;
+  concurrency: number;
+  jobIds: string[];
+}
+
+export interface BatchStatusResult {
+  batch: SimplificationBatch;
+  jobs: Array<
+    Pick<
+      SimplificationJob,
+      | 'id'
+      | 'job_type'
+      | 'status'
+      | 'progress'
+      | 'message'
+      | 'input_triangles'
+      | 'output_triangles'
+      | 'result_path'
+      | 'error_message'
+      | 'started_at'
+      | 'completed_at'
+    > & { batch_index: number; batch_label: string | null }
+  >;
+  tally: { queued: number; running: number; completed: number; failed: number; cancelled: number };
+  progress: number;
+}
+
+const _trailing = {
 
 export interface WaitOptions {
   intervalMs?: number;
