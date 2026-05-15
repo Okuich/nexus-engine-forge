@@ -151,7 +151,7 @@ describe('topo iteration preview API', () => {
     while (true) {
       const r = await stream.next();
       if (r.done) { result = r.value; break; }
-      snaps.push(r.value.iteration);
+      snaps.push((r.value as { iteration: number }).iteration);
       if (snaps.length === 2) ac.abort();
     }
     expect((result as { cancelled?: boolean }).cancelled).toBe(true);
