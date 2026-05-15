@@ -6,12 +6,38 @@
  * (ASCII formats) or `Uint8Array` (binary STL) — callers handle file I/O.
  */
 import type { RawMesh } from './types';
+import { ensureWatertight, analyzeWatertightness, type SealOptions, type WatertightReport } from './meshWatertight';
 
 export interface ExportOptions {
   /** Solid / object name. Default 'mesh'. */
   name?: string;
   /** Append unit-normals (OBJ only). Default false. */
   includeNormals?: boolean;
+  /**
+   * If true, run hole-sealing before serialization. The sealed mesh is used
+   * for output. Pass an object to forward `SealOptions`. Default false.
+   */
+  ensureWatertight?: boolean | SealOptions;
+  /**
+   * Optional sink that receives the watertightness report (post-seal if
+   * `ensureWatertight` is set, otherwise pre-export analysis).
+   */
+  onWatertightReport?: (report: WatertightReport) => void;
+}
+
+function preprocess(mesh: RawMesh, options: ExportOptions): RawMesh {
+  if (!options.ensureWatertight && !options.onWatertightReport) return mesh;
+  const sealOpts: SealOptions = typeof options.ensureWatertight === 'object'
+    ? options.ensureWatertight
+    : {};
+  if (options.ensureWatertight) {
+    const result = ensureWatertight(mesh, sealOpts);
+    options.onWatertightReport?.(result.after);
+    return result.mesh;
+  }
+  // Report only.
+  options.onWatertightReport?.(analyzeWatertightness(mesh, sealOpts.weldEpsilon ?? 1e-6));
+  return mesh;
 }
 
 interface IteratedTriangle {
@@ -66,6 +92,7 @@ function countTriangles(mesh: RawMesh): number {
 // ─────────────────────────────────────────────────────────────────────────
 
 export function exportSTL(mesh: RawMesh, options: ExportOptions = {}): string {
+  mesh = preprocess(mesh, options);
   const name = options.name ?? 'mesh';
   const lines: string[] = [`solid ${name}`];
   for (const tri of iterateTriangles(mesh)) {
@@ -87,6 +114,7 @@ export function exportSTL(mesh: RawMesh, options: ExportOptions = {}): string {
 // ─────────────────────────────────────────────────────────────────────────
 
 export function exportSTLBinary(mesh: RawMesh, options: ExportOptions = {}): Uint8Array {
+  mesh = preprocess(mesh, options);
   const triCount = countTriangles(mesh);
   const buffer = new ArrayBuffer(84 + 50 * triCount);
   const view = new DataView(buffer);
@@ -121,6 +149,7 @@ export function exportSTLBinary(mesh: RawMesh, options: ExportOptions = {}): Uin
 // ─────────────────────────────────────────────────────────────────────────
 
 export function exportOBJ(mesh: RawMesh, options: ExportOptions = {}): string {
+  mesh = preprocess(mesh, options);
   const name = options.name ?? 'mesh';
   const includeNormals = options.includeNormals ?? false;
   const lines: string[] = [`# Lovable Geometry OBJ`, `o ${name}`];
