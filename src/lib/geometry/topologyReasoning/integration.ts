@@ -97,7 +97,12 @@ export function adaptFaceAdjacency(
   metadata: Record<string, unknown> = {},
 ): CreateGraphSpec {
   const seen = new Set<number>();
-  const edges: CreateGraphSpec['edges'] = [];
+  const edges: Array<{
+    source: number | string;
+    target: number | string;
+    weight?: number;
+    attributes?: Record<string, unknown>;
+  }> = [];
   for (const e of graph.adjacency) {
     const key = e.faceA < e.faceB
       ? e.faceA * graph.numNodes + e.faceB
@@ -121,13 +126,12 @@ export function adaptFaceAdjacency(
 }
 
 function edgeAttributesFromFeatures(e: EdgeFeatures): Record<string, unknown> {
-  // Keep the adapter pure: surface the four canonical numeric features,
+  // Keep the adapter pure: surface the canonical numeric features,
   // skip Vec3 / nested objects so backends can ingest as scalars.
   return {
     dihedralAngle: e.dihedralAngle,
-    sharedEdgeLength: e.sharedEdgeLength,
+    length: e.length,
     isConcave: e.isConcave,
-    angleClass: e.angleClass,
   };
 }
 
