@@ -129,7 +129,15 @@ describe('simplify-api goldens — LOD counts', () => {
 
     // Pin the exact chain — vertex-cluster grid scaling is deterministic.
     const triCounts = lods.map((l) => l.stats.outputTriangles);
-    expect(triCounts).toMatchInlineSnapshot();
+    expect(triCounts).toMatchInlineSnapshot(`
+      [
+        384,
+        336,
+        332,
+        314,
+        264,
+      ]
+    `);
   });
 
   it('teapot (torus) produces a deterministic LOD chain', () => {
@@ -140,7 +148,14 @@ describe('simplify-api goldens — LOD counts', () => {
     expect(lods.length).toBeGreaterThanOrEqual(2);
 
     const triCounts = lods.map((l) => l.stats.outputTriangles);
-    expect(triCounts).toMatchInlineSnapshot();
+    expect(triCounts).toMatchInlineSnapshot(`
+      [
+        576,
+        460,
+        324,
+        244,
+      ]
+    `);
   });
 });
 
@@ -165,8 +180,8 @@ describe('simplify-api goldens — graph cluster topology', () => {
 
     // Pin exact topology — heaviest-edge matching is deterministic given a
     // stable input ordering and stable JS sort.
-    expect(g.nodeCount).toMatchInlineSnapshot();
-    expect(g.edgeCount).toMatchInlineSnapshot();
+    expect(g.nodeCount).toMatchInlineSnapshot(`96`);
+    expect(g.edgeCount).toMatchInlineSnapshot(`125`);
     expect(g.clusters.reduce((s, c) => s + c.length, 0)).toBe(384);
   });
 
@@ -174,8 +189,8 @@ describe('simplify-api goldens — graph cluster topology', () => {
     const m = meshToArrays(makeTeapot(24, 12));
     const g = coarsenGraph(m, undefined, 0.25);
 
-    expect(g.nodeCount).toMatchInlineSnapshot();
-    expect(g.edgeCount).toMatchInlineSnapshot();
+    expect(g.nodeCount).toMatchInlineSnapshot(`144`);
+    expect(g.edgeCount).toMatchInlineSnapshot(`220`);
     // Every original face appears in exactly one cluster.
     const seen = new Set<number>();
     for (const c of g.clusters) for (const f of c) {
