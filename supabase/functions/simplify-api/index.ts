@@ -30,9 +30,38 @@ import { openApiSpec, swaggerHTML } from './openapi.ts';
 export { parseSTL, parseOBJ, parseUploadedMesh, inferMeshFormat } from './parsers.ts';
 export { openApiSpec } from './openapi.ts';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Core helpers (pure JS, shared with Vitest tests) ──────────────────────
 
-type V3 = [number, number, number];
+import {
+  MAX_TRIANGLES,
+  MAX_LODS,
+  buildLODs,
+  coarsenGraph,
+  meshToArrays,
+  serializeMesh,
+  type RawMesh,
+  type SerializedMesh,
+  type MeshArrays,
+} from './core.ts';
+export {
+  buildLODs,
+  coarsenGraph,
+  meshToArrays,
+  MAX_TRIANGLES,
+  MAX_LODS,
+} from './core.ts';
+
+function b64FromBuffer(buf: ArrayBufferView): string {
+  const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+  }
+  return btoa(bin);
+}
+
+
 interface RawMesh { positions: number[]; indices?: number[] }
 interface SerializedMesh {
   /** base64-encoded Float32Array */
