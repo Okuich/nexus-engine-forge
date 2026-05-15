@@ -95,4 +95,53 @@ describe('mesh watertightness', () => {
     const facetCount = (stl.match(/facet normal/g) ?? []).length;
     expect(facetCount).toBe(4);
   });
+
+  it('exportSTLBinary with ensureWatertight seals before serialization', () => {
+    const open: RawMesh = { positions: tetraPositions, indices: tetraIndicesOpen };
+    let payload: { before: { isWatertight: boolean }; after: { isWatertight: boolean; triangleCount: number }; sealed: boolean } | null = null;
+    const bin = exportSTLBinary(open, {
+      ensureWatertight: true,
+      onWatertightReport: r => { payload = r; },
+    });
+
+    expect(payload).not.toBeNull();
+    expect(payload!.before.isWatertight).toBe(false);
+    expect(payload!.after.isWatertight).toBe(true);
+    expect(payload!.after.triangleCount).toBe(4);
+    expect(payload!.sealed).toBe(true);
+
+    // Binary STL header is 80 bytes name + uint32 LE triangle count.
+    expect(bin).toBeInstanceOf(Uint8Array);
+    const view = new DataView(bin.buffer, bin.byteOffset, bin.byteLength);
+    const triCount = view.getUint32(80, true);
+    expect(triCount).toBe(4);
+    // Total file size: 84 + 50 * triCount.
+    expect(bin.byteLength).toBe(84 + 50 * 4);
+  });
+
+  it('exportOBJ with ensureWatertight seals before serialization', () => {
+    const open: RawMesh = { positions: tetraPositions, indices: tetraIndicesOpen };
+    let payload: { before: { isWatertight: boolean }; after: { isWatertight: boolean; triangleCount: number }; sealed: boolean } | null = null;
+    const obj = exportOBJ(open, {
+      ensureWatertight: true,
+      onWatertightReport: r => { payload = r; },
+    });
+
+    expect(payload).not.toBeNull();
+    expect(payload!.before.isWatertight).toBe(false);
+    expect(payload!.after.isWatertight).toBe(true);
+    expect(payload!.after.triangleCount).toBe(4);
+    expect(payload!.sealed).toBe(true);
+
+    // OBJ uses `f a b c` records (one per triangle). Sealed tetra → 4 faces.
+    const faceCount = (obj.match(/^f /gm) ?? []).length;
+    expect(faceCount).toBe(4);
+  });
+
+  it('exportOBJ without ensureWatertight does NOT seal — face count matches the open mesh', () => {
+    const open: RawMesh = { positions: tetraPositions, indices: tetraIndicesOpen };
+    const obj = exportOBJ(open);
+    const faceCount = (obj.match(/^f /gm) ?? []).length;
+    expect(faceCount).toBe(3);
+  });
 });
