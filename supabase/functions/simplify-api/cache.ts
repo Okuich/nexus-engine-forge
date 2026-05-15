@@ -117,7 +117,7 @@ export async function hashMesh(mesh: RawMesh): Promise<string> {
 
 /** Hash raw upload bytes (skips re-parsing for the cache key). */
 export async function hashBytes(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest('SHA-256', bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
   return toHex(digest);
 }
 
