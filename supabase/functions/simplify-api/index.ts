@@ -592,6 +592,88 @@ async function handleGraphQL(req: Request) {
   }
 }
 
+// ─── Multipart upload (STL/OBJ → LODs + coarsened graph) ───────────────────
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+
+function parsePositiveInt(v: FormDataEntryValue | null): number | undefined {
+  if (typeof v !== 'string') return undefined;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+function parseFloatField(v: FormDataEntryValue | null): number | undefined {
+  if (typeof v !== 'string') return undefined;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+async function handleUpload(req: Request) {
+  const ct = req.headers.get('content-type') ?? '';
+  if (!ct.toLowerCase().startsWith('multipart/form-data')) {
+    return err('expected_multipart_form_data', 415);
+  }
+
+  let form: FormData;
+  try { form = await req.formData(); }
+  catch { return err('invalid_multipart_body', 400); }
+
+  const file = form.get('file');
+  if (!(file instanceof File)) return err('missing_file_field', 400);
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return err(`file_too_large (>${MAX_UPLOAD_BYTES} bytes)`, 413);
+  }
+
+  // Allow client to override the inferred format.
+  const formatOverride = (form.get('format') as string | null)?.toLowerCase();
+  const inferred = formatOverride === 'stl' || formatOverride === 'obj'
+    ? (formatOverride as MeshFormat)
+    : inferMeshFormat(file.name, file.type);
+  if (!inferred) return err('unsupported_mesh_format (expected .stl or .obj)', 415);
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  let mesh: RawMeshIn;
+  try { mesh = parseUploadedMesh(bytes, inferred); }
+  catch (e) { return err(`parse_failed: ${(e as Error).message}`, 400); }
+
+  // Cap triangle count post-parse — same MAX_TRIANGLES contract as JSON path.
+  const triCount = mesh.indices ? mesh.indices.length / 3 : mesh.positions.length / 9;
+  if (triCount > MAX_TRIANGLES) {
+    return err(`triangle_count_exceeds_limit (${triCount} > ${MAX_TRIANGLES})`, 413);
+  }
+
+  // Optional knobs (mirrors JSON LODOptions/GraphOptions).
+  const lodOptions = {
+    levels: parsePositiveInt(form.get('levels')),
+    ratioPerLevel: parseFloatField(form.get('ratioPerLevel')),
+    minTriangles: parsePositiveInt(form.get('minTriangles')),
+    maxLevels: parsePositiveInt(form.get('maxLevels')),
+  };
+  const graphOptions = {
+    targetNodes: parsePositiveInt(form.get('targetNodes')),
+    targetRatio: parseFloatField(form.get('targetRatio')),
+  };
+
+  const t0 = performance.now();
+  const lodResult = buildLODs(mesh, lodOptions);
+  const m = meshToArrays(mesh);
+  const graph = coarsenGraph(m, graphOptions.targetNodes, graphOptions.targetRatio);
+
+  return json({
+    upload: {
+      filename: file.name,
+      format: inferred,
+      bytes: file.size,
+      triangleCount: triCount,
+      vertexCount: mesh.positions.length / 3,
+    },
+    lods: lodResult.lods,
+    coarseMesh: lodResult.lods[lodResult.lods.length - 1].mesh,
+    graph,
+    elapsedMs: performance.now() - t0,
+  });
+}
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
