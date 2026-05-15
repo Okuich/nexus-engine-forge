@@ -610,6 +610,22 @@ export async function runSIMPAuto(
   options: TopoOptimizerOptions & { forceCpu?: boolean } = {},
 ): Promise<SimpAutoResult> {
   const { forceCpu, ...simpOptions } = options;
+  const [nx, ny, nz] = domain.dims;
+  const domainSize = nx * ny * nz;
+
+  const finish = (result: SimpAutoResult): SimpAutoResult => {
+    emitTelemetry({
+      backend: result.backend,
+      fellBack: result.fellBack,
+      fallbackReason: result.fallbackReason,
+      elapsedMs: result.elapsedMs,
+      iterations: result.iterations,
+      converged: result.converged,
+      domainSize,
+      timestamp: Date.now(),
+    });
+    return result;
+  };
 
   const runCpu = async (
     fellBack: boolean,
@@ -628,10 +644,10 @@ export async function runSIMPAuto(
     };
   };
 
-  if (forceCpu) return runCpu(false);
+  if (forceCpu) return finish(await runCpu(false));
 
   if (!(await hasWebGPUForSIMP())) {
-    return runCpu(true, 'webgpu_unavailable');
+    return finish(await runCpu(true, 'webgpu_unavailable'));
   }
 
   try {
@@ -640,7 +656,7 @@ export async function runSIMPAuto(
     if (simpOptions.loadCases && simpOptions.loadCases.length > 0) {
       const { runSIMPGPUMultiLoad } = await import('./simpGpuMultiLoad');
       const ml = await runSIMPGPUMultiLoad(domain, simpOptions.loadCases, supports, simpOptions);
-      return {
+      return finish({
         density: ml.density,
         compliance: ml.compliance,
         iterations: ml.iterations,
@@ -649,14 +665,14 @@ export async function runSIMPAuto(
         backend: 'webgpu' as const,
         elapsedMs: ml.elapsedMs,
         fellBack: false,
-      };
+      });
     }
     const gpu = await runSIMPGPU(domain, loads, supports, simpOptions);
-    return { ...gpu, fellBack: false };
+    return finish({ ...gpu, fellBack: false });
   } catch (err) {
     const reason = err instanceof WebGPUUnavailableError
       ? err.message
       : `gpu_run_failed: ${err instanceof Error ? err.message : String(err)}`;
-    return runCpu(true, reason);
+    return finish(await runCpu(true, reason));
   }
 }
