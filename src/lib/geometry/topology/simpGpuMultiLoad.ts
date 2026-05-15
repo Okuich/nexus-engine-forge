@@ -164,6 +164,67 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+/**
+ * Computes per-case aggregation weights AND the aggregated compliance on the
+ * GPU from the C-float `perCase` buffer. Output layout in `weightsAgg`:
+ *   [0..C-1] = per-case weights consumed by WGSL_AGGREGATE
+ *   [C]      = aggregated compliance (telemetry / history)
+ *
+ * Modes (matches `computeAggregationWeights`):
+ *   mode = 0u → weighted-sum: w_c = caseW_c, agg = Σ caseW_c · c_c
+ *   mode = 1u → KS soft-max:  w_c = softmax(ρ·caseW_c·c_c)_c · caseW_c,
+ *                              agg = (log Σ exp(ρ·caseW·c) + M) / ρ
+ *
+ * Single-thread dispatch: C is small (typically ≤ 32) so a serial reduction
+ * is faster than a parallel one once you account for barrier overhead, and
+ * collapsing into one invocation keeps the WGSL trivially auditable for
+ * numerical-stability bugs (max-shift before exp).
+ */
+const WGSL_KS_WEIGHTS = /* wgsl */ `
+struct Params {
+  numCases: u32,
+  mode: u32,      // 0 = weighted-sum, 1 = ks
+  ksRho: f32,
+  _pad: u32,
+};
+@group(0) @binding(0) var<uniform> P: Params;
+@group(0) @binding(1) var<storage, read> perCase: array<f32>;
+@group(0) @binding(2) var<storage, read> caseW: array<f32>;
+@group(0) @binding(3) var<storage, read_write> weightsAgg: array<f32>;
+
+@compute @workgroup_size(1)
+fn main() {
+  let C = P.numCases;
+  if (P.mode == 0u) {
+    var agg: f32 = 0.0;
+    for (var c: u32 = 0u; c < C; c = c + 1u) {
+      weightsAgg[c] = caseW[c];
+      agg = agg + caseW[c] * perCase[c];
+    }
+    weightsAgg[C] = agg;
+    return;
+  }
+  // KS soft-max with max-shift for numerical stability.
+  var M: f32 = -3.4e38;
+  for (var c: u32 = 0u; c < C; c = c + 1u) {
+    let s = P.ksRho * caseW[c] * perCase[c];
+    if (s > M) { M = s; }
+  }
+  var denom: f32 = 0.0;
+  for (var c: u32 = 0u; c < C; c = c + 1u) {
+    let s = P.ksRho * caseW[c] * perCase[c];
+    let e = exp(s - M);
+    weightsAgg[c] = e;          // stash exp(...) — finalized below
+    denom = denom + e;
+  }
+  let invDenom = 1.0 / max(denom, 1e-30);
+  for (var c: u32 = 0u; c < C; c = c + 1u) {
+    weightsAgg[c] = weightsAgg[c] * invDenom * caseW[c];
+  }
+  weightsAgg[C] = (log(max(denom, 1e-30)) + M) / P.ksRho;
+}
+`;
+
 const WGSL_FILTER = /* wgsl */ `
 struct Params { dims: vec3<u32>, rmin: f32, r: u32 };
 @group(0) @binding(0) var<uniform> P: Params;
