@@ -27,8 +27,16 @@ import {
   type RawMeshIn,
 } from './parsers.ts';
 import { openApiSpec, swaggerHTML } from './openapi.ts';
+import {
+  responseCache,
+  hashMesh,
+  hashBytes,
+  makeCacheKey,
+  type SimplifyRoute,
+} from './cache.ts';
 export { parseSTL, parseOBJ, parseUploadedMesh, inferMeshFormat } from './parsers.ts';
 export { openApiSpec } from './openapi.ts';
+export { responseCache, hashMesh, hashBytes, makeCacheKey, canonicalizeOptions, LRUCache } from './cache.ts';
 
 // ─── Core helpers (pure JS, shared with Vitest tests) ──────────────────────
 
