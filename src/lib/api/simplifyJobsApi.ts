@@ -159,7 +159,6 @@ export interface BatchStatusResult {
   progress: number;
 }
 
-const _trailing = {
 
 export interface WaitOptions {
   intervalMs?: number;
