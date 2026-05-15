@@ -3,12 +3,19 @@ import {
   adaptFaceAdjacency,
   analyzeFaceAdjacency,
   findCriticalFaces,
+  makeTopologyCapabilities,
   planTopologyDispatch,
   stubTopologyBackend,
   topologyRegistry,
   TopologyNotImplementedError,
 } from '@/lib/geometry';
-import type { FaceAdjacencyGraph } from '@/lib/geometry';
+import type {
+  FaceAdjacencyGraph,
+  TopologyBackend,
+  GraphDescriptor,
+  GraphInvariants,
+  TopologyResult,
+} from '@/lib/geometry';
 
 const graph: FaceAdjacencyGraph = {
   numNodes: 4,
