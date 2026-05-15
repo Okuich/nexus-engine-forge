@@ -3,7 +3,7 @@
  * indirectly via the exported `evaluateCompliance` pure function.
  */
 import { assertEquals, assertAlmostEquals } from 'jsr:@std/assert@1';
-import { evaluateCompliance } from './index.ts';
+import { evaluateCompliance } from './compliance.ts';
 
 Deno.test('weighted-sum aggregation matches Σ wᵢ·cᵢ', () => {
   const result = evaluateCompliance({
