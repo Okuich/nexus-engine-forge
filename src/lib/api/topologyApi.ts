@@ -116,3 +116,88 @@ export async function evaluateComplianceGraphQL(
   }
   return payload.data!.compliance;
 }
+
+// ─── Streaming (SSE) ───────────────────────────────────────────────────────
+
+export interface IterationSnapshot {
+  iteration: number;
+  compliance: number;
+  perCaseCompliance: number[];
+  volumeFraction: number;
+  change: number;
+  elapsedMs: number;
+}
+
+export interface StreamComplianceOptions {
+  /** Minimum ms between iteration events (server-side throttle). */
+  throttleMs?: number;
+  /** Total simulated iterations (1-500). */
+  maxIterations?: number;
+  /** Target volume fraction the simulated run converges toward. */
+  volumeFraction?: number;
+  signal?: AbortSignal;
+  onOpen?: (info: { maxIterations: number; throttleMs: number; targetVolumeFraction: number }) => void;
+  onIteration?: (snap: IterationSnapshot) => void;
+  onError?: (err: Error) => void;
+}
+
+/**
+ * Stream `IterationSnapshot` updates over SSE. Resolves with the final
+ * `ComplianceResponse` when the server emits `done`.
+ *
+ * Implementation note: uses fetch + ReadableStream rather than EventSource
+ * so we can POST the request body and forward the auth header.
+ */
+export async function streamCompliance(
+  req: ComplianceRequest,
+  options: StreamComplianceOptions = {},
+): Promise<ComplianceResponse> {
+  const { signal, onOpen, onIteration, onError, ...streamOpts } = options;
+  const res = await fetch(endpoint('/stream'), {
+    method: 'POST',
+    signal,
+    headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(await authHeader()) },
+    body: JSON.stringify({ $schema: TOPOLOGY_WIRE_VERSION, data: { ...req, ...streamOpts } }),
+  });
+  if (!res.ok || !res.body) {
+    let detail: unknown = undefined;
+    try { detail = await res.json(); } catch { /* ignore */ }
+    throw new TopologyApiError(res.status, `stream failed: HTTP ${res.status}`, detail);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let final: ComplianceResponse | null = null;
+
+  const handleEvent = (event: string, data: string) => {
+    let parsed: { data?: unknown } = {};
+    try { parsed = JSON.parse(data) as { data?: unknown }; } catch { return; }
+    const payload = parsed.data ?? parsed;
+    if (event === 'open') onOpen?.(payload as never);
+    else if (event === 'iteration') onIteration?.(payload as IterationSnapshot);
+    else if (event === 'done') final = payload as ComplianceResponse;
+    else if (event === 'error') onError?.(new Error((payload as { message?: string })?.message ?? 'stream error'));
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep: number;
+    // SSE messages are separated by a blank line.
+    while ((sep = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      let event = 'message';
+      const dataLines: string[] = [];
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      }
+      if (dataLines.length) handleEvent(event, dataLines.join('\n'));
+    }
+  }
+  if (!final) throw new TopologyApiError(0, 'stream ended before done event');
+  return final;
+}

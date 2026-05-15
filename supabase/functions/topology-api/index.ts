@@ -22,7 +22,9 @@
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3.23.8';
 import { evaluateCompliance, type ComplianceRequest as ComplianceRequestT } from './compliance.ts';
+import { buildIterationStream, streamHeaders, type StreamOptions } from './stream.ts';
 export { evaluateCompliance } from './compliance.ts';
+export { buildIterationStream } from './stream.ts';
 
 const SCHEMA = 'lovable.topology/v1' as const;
 
@@ -57,6 +59,12 @@ const ComplianceRequest = z.object({
   ksRho: z.number().positive().max(1e3).optional(),
   /** Top-level supports applied when a case omits its own override. */
   supports: z.array(SupportConditionJSON).max(1024).optional(),
+});
+
+const StreamRequest = ComplianceRequest.extend({
+  throttleMs: z.number().min(0).max(5000).optional(),
+  maxIterations: z.number().int().min(1).max(500).optional(),
+  volumeFraction: z.number().min(0.05).max(1).optional(),
 });
 
 
@@ -161,6 +169,32 @@ async function handleGraphQL(req: Request): Promise<Response> {
   return json({ data: { compliance: result } });
 }
 
+async function handleStream(req: Request): Promise<Response> {
+  let raw: unknown;
+  if (req.method === 'GET') {
+    const u = new URL(req.url);
+    const b64 = u.searchParams.get('body');
+    if (!b64) return json({ error: 'missing body query param' }, 400);
+    try { raw = JSON.parse(atob(b64)); }
+    catch { return json({ error: 'invalid base64 JSON body' }, 400); }
+  } else if (req.method === 'POST') {
+    try { raw = await req.json(); }
+    catch { return json({ error: 'invalid JSON body' }, 400); }
+  } else {
+    return json({ error: `method not allowed: ${req.method}` }, 405);
+  }
+  const inner = (raw && typeof raw === 'object' && '$schema' in (raw as object))
+    ? (raw as { data: unknown }).data : raw;
+  const parsed = StreamRequest.safeParse(inner);
+  if (!parsed.success) {
+    return json({ error: 'invalid request', details: parsed.error.flatten() }, 400);
+  }
+  const { throttleMs, maxIterations, volumeFraction, ...complianceReq } = parsed.data;
+  const opts: StreamOptions = { throttleMs, maxIterations, volumeFraction };
+  const stream = buildIterationStream(complianceReq, opts, req.signal);
+  return new Response(stream, { headers: streamHeaders() });
+}
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -186,6 +220,9 @@ Deno.serve(async (req: Request) => {
       const body = await parseRequest(req);
       const result = evaluateCompliance(body);
       return json(envelope('compliance', result));
+    }
+    if (path === '/stream') {
+      return await handleStream(req);
     }
     return json({ error: `route not found: ${path}` }, 404);
   } catch (e) {
