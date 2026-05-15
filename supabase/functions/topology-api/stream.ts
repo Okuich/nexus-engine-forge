@@ -17,7 +17,13 @@
  * pipeline before the real solver runs server-side.
  */
 
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
+// Inlined CORS headers (avoid the `npm:` specifier here so this module is
+// importable from vitest unit tests as well as Deno).
+const corsHeaders: Record<string, string> = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': '*',
+  'access-control-allow-methods': '*',
+};
 import {
   evaluateCompliance,
   type ComplianceRequest,
