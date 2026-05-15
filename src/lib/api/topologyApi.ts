@@ -126,6 +126,13 @@ export interface IterationSnapshot {
   volumeFraction: number;
   change: number;
   elapsedMs: number;
+  /** Downsampled density grid (intermediate iterations). */
+  densityPreview?: number[];
+  previewDims?: [number, number, number];
+  /** Full-resolution density grid (final iteration only). */
+  density?: number[];
+  dims?: [number, number, number];
+  isFinal?: boolean;
 }
 
 export interface StreamComplianceOptions {
@@ -135,8 +142,21 @@ export interface StreamComplianceOptions {
   maxIterations?: number;
   /** Target volume fraction the simulated run converges toward. */
   volumeFraction?: number;
+  /** Emit density data at all (default true). */
+  includeDensity?: boolean;
+  /** Edge length of the downsampled preview cube (default 8, range 2-16). */
+  previewSize?: number;
+  /** Edge length of the full density cube emitted on the final iteration (default 24, range 4-48). */
+  fullSize?: number;
   signal?: AbortSignal;
-  onOpen?: (info: { maxIterations: number; throttleMs: number; targetVolumeFraction: number }) => void;
+  onOpen?: (info: {
+    maxIterations: number;
+    throttleMs: number;
+    targetVolumeFraction: number;
+    includeDensity?: boolean;
+    previewDims?: [number, number, number];
+    finalDims?: [number, number, number];
+  }) => void;
   onIteration?: (snap: IterationSnapshot) => void;
   onError?: (err: Error) => void;
 }
