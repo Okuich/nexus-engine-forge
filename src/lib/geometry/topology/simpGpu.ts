@@ -580,6 +580,22 @@ export async function runSIMPAuto(
   }
 
   try {
+    // Multi-load GPU path: batched per-case force-flow + GPU aggregation,
+    // collapsing the per-case readbacks into 2 readbacks/iter regardless of C.
+    if (simpOptions.loadCases && simpOptions.loadCases.length > 0) {
+      const { runSIMPGPUMultiLoad } = await import('./simpGpuMultiLoad');
+      const ml = await runSIMPGPUMultiLoad(domain, simpOptions.loadCases, supports, simpOptions);
+      return {
+        density: ml.density,
+        compliance: ml.compliance,
+        iterations: ml.iterations,
+        converged: ml.converged,
+        history: ml.history,
+        backend: 'webgpu' as const,
+        elapsedMs: ml.elapsedMs,
+        fellBack: false,
+      };
+    }
     const gpu = await runSIMPGPU(domain, loads, supports, simpOptions);
     return { ...gpu, fellBack: false };
   } catch (err) {
