@@ -149,6 +149,7 @@ export function exportSTLBinary(mesh: RawMesh, options: ExportOptions = {}): Uin
 // ─────────────────────────────────────────────────────────────────────────
 
 export function exportOBJ(mesh: RawMesh, options: ExportOptions = {}): string {
+  mesh = preprocess(mesh, options);
   const name = options.name ?? 'mesh';
   const includeNormals = options.includeNormals ?? false;
   const lines: string[] = [`# Lovable Geometry OBJ`, `o ${name}`];
