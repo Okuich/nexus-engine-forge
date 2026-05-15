@@ -162,6 +162,130 @@ export function analyzeWatertightness(mesh: RawMesh, weldEpsilon = 1e-6): Watert
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Ear-clipping triangulation for boundary loops
+// ─────────────────────────────────────────────────────────────────────────
+
+type Vec3 = [number, number, number];
+
+function getVertex(positions: ArrayLike<number>, idx: number): Vec3 {
+  return [positions[idx * 3], positions[idx * 3 + 1], positions[idx * 3 + 2]];
+}
+
+/** Newell's method: robust polygon normal for arbitrary (incl. non-planar) loops. */
+function loopNormal(positions: ArrayLike<number>, loop: number[]): Vec3 {
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < loop.length; i++) {
+    const [ax, ay, az] = getVertex(positions, loop[i]);
+    const [bx, by, bz] = getVertex(positions, loop[(i + 1) % loop.length]);
+    nx += (ay - by) * (az + bz);
+    ny += (az - bz) * (ax + bx);
+    nz += (ax - bx) * (ay + by);
+  }
+  const len = Math.hypot(nx, ny, nz);
+  if (len < 1e-20) return [0, 0, 1];
+  return [nx / len, ny / len, nz / len];
+}
+
+/** Project loop vertices onto the plane orthogonal to `normal` to get 2D coords. */
+function projectTo2D(positions: ArrayLike<number>, loop: number[], normal: Vec3): Array<[number, number]> {
+  // Build an orthonormal basis (u, v) for the plane.
+  const [nx, ny, nz] = normal;
+  const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+  // Pick a helper axis least aligned with the normal.
+  let hx = 1, hy = 0, hz = 0;
+  if (ax >= ay && ax >= az) { hx = 0; hy = 1; hz = 0; }
+  // u = normalize(normal × helper)
+  let ux = ny * hz - nz * hy;
+  let uy = nz * hx - nx * hz;
+  let uz = nx * hy - ny * hx;
+  const ul = Math.hypot(ux, uy, uz) || 1;
+  ux /= ul; uy /= ul; uz /= ul;
+  // v = normal × u
+  const vx = ny * uz - nz * uy;
+  const vy = nz * ux - nx * uz;
+  const vz = nx * uy - ny * ux;
+  const out: Array<[number, number]> = [];
+  for (const idx of loop) {
+    const [px, py, pz] = getVertex(positions, idx);
+    out.push([px * ux + py * uy + pz * uz, px * vx + py * vy + pz * vz]);
+  }
+  return out;
+}
+
+function signed2DArea(poly: Array<[number, number]>): number {
+  let s = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [x1, y1] = poly[i];
+    const [x2, y2] = poly[(i + 1) % poly.length];
+    s += x1 * y2 - x2 * y1;
+  }
+  return s * 0.5;
+}
+
+function pointInTri2D(
+  p: [number, number], a: [number, number], b: [number, number], c: [number, number],
+): boolean {
+  const d1 = (p[0] - b[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (p[1] - b[1]);
+  const d2 = (p[0] - c[0]) * (b[1] - c[1]) - (b[0] - c[0]) * (p[1] - c[1]);
+  const d3 = (p[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (p[1] - a[1]);
+  const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+  const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(hasNeg && hasPos);
+}
+
+/**
+ * Ear-clip a simple polygon defined by 2D coords + parallel `loopIdx` (mesh
+ * vertex indices). Returns an array of triangle index triples (mesh indices).
+ * Output winding is CCW in the projected plane.
+ */
+function earClip2D(poly2D: Array<[number, number]>, loopIdx: number[]): number[][] {
+  const n = poly2D.length;
+  if (n < 3) return [];
+  // Ensure CCW; if signed area is negative, reverse working copies.
+  const ccw = signed2DArea(poly2D) >= 0;
+  const verts = ccw ? poly2D.slice() : poly2D.slice().reverse();
+  const idx = ccw ? loopIdx.slice() : loopIdx.slice().reverse();
+
+  // Doubly-linked list of remaining vertex positions in `verts`.
+  const prev: number[] = new Array(n);
+  const next: number[] = new Array(n);
+  for (let i = 0; i < n; i++) { prev[i] = (i + n - 1) % n; next[i] = (i + 1) % n; }
+
+  const triangles: number[][] = [];
+  let remaining = n;
+  let guard = n * n; // worst-case ear search budget
+  let i = 0;
+  while (remaining > 3 && guard-- > 0) {
+    const ai = prev[i], bi = i, ci = next[i];
+    const a = verts[ai], b = verts[bi], c = verts[ci];
+    // Convex test (CCW): cross(b-a, c-a) > 0
+    const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    let isEar = cross > 0;
+    if (isEar) {
+      // No other vertex inside triangle abc.
+      let k = next[ci];
+      while (k !== ai) {
+        if (pointInTri2D(verts[k], a, b, c)) { isEar = false; break; }
+        k = next[k];
+      }
+    }
+    if (isEar) {
+      triangles.push([idx[ai], idx[bi], idx[ci]]);
+      next[ai] = ci;
+      prev[ci] = ai;
+      remaining--;
+      i = ai;
+    } else {
+      i = ci;
+    }
+  }
+  if (remaining === 3) {
+    triangles.push([idx[prev[i]], idx[i], idx[next[i]]]);
+  }
+  return triangles;
+}
+
 export function sealSmallHoles(mesh: RawMesh, options: SealOptions = {}): SealResult {
   const maxLoopEdges = options.maxLoopEdges ?? 32;
   const weldEpsilon = options.weldEpsilon ?? 1e-6;
@@ -178,13 +302,21 @@ export function sealSmallHoles(mesh: RawMesh, options: SealOptions = {}): SealRe
       skippedLoops++;
       continue;
     }
-    // Fan triangulation around loop[0]. Boundary directed edges run a -> b
-    // such that the *interior* lies on one side; flipping fan order matches it.
-    const a = loop[0];
-    for (let i = 1; i < loop.length - 1; i++) {
-      // Reverse winding so the new face's outward normal opposes the boundary
-      // half-edge direction (which points along the hole rim with interior on the left).
-      newIndices.push(a, loop[i + 1], loop[i]);
+    // Project the (possibly non-planar) loop onto its best-fit plane and
+    // ear-clip in 2D. This handles concave / irregular rims that a fan
+    // triangulation would mis-cover with overlapping or zero-area faces.
+    const normal = loopNormal(positions, loop);
+    const poly2D = projectTo2D(positions, loop, normal);
+    const tris = earClip2D(poly2D, loop);
+    if (tris.length === 0) {
+      // Degenerate (collinear / zero-area) loop — cannot triangulate reliably.
+      skippedLoops++;
+      continue;
+    }
+    // Reverse winding so the new face's outward normal opposes the boundary
+    // half-edge direction (interior lies to the left of the directed rim).
+    for (const [a, b, c] of tris) {
+      newIndices.push(a, c, b);
       addedTriangles++;
     }
     sealedLoops++;
