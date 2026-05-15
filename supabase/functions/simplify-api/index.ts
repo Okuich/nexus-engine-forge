@@ -19,6 +19,13 @@
  */
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3.23.8';
+import {
+  parseUploadedMesh,
+  inferMeshFormat,
+  type MeshFormat,
+  type RawMeshIn,
+} from './parsers.ts';
+export { parseSTL, parseOBJ, parseUploadedMesh, inferMeshFormat } from './parsers.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
