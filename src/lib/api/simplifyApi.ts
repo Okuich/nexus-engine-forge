@@ -127,6 +127,35 @@ export const simplifyApi = {
     return invoke<InferenceResponse>('inference', input);
   },
 
+  /**
+   * REST: upload an STL/OBJ file as multipart/form-data and get back LODs +
+   * the coarsened face-adjacency graph in a single round-trip.
+   *
+   * Optional knobs (forwarded as form fields):
+   *   levels, ratioPerLevel, minTriangles, maxLevels   — LOD options
+   *   targetNodes, targetRatio                          — graph options
+   *   format ('stl' | 'obj')                            — override sniffing
+   */
+  async upload(
+    file: File | Blob,
+    options: LODOptions & GraphOptions & { format?: 'stl' | 'obj'; filename?: string } = {},
+  ): Promise<UploadResponse> {
+    const form = new FormData();
+    const filename = options.filename
+      ?? (file instanceof File ? file.name : 'mesh.stl');
+    form.append('file', file, filename);
+    if (options.levels !== undefined) form.append('levels', String(options.levels));
+    if (options.ratioPerLevel !== undefined) form.append('ratioPerLevel', String(options.ratioPerLevel));
+    if (options.minTriangles !== undefined) form.append('minTriangles', String(options.minTriangles));
+    if (options.maxLevels !== undefined) form.append('maxLevels', String(options.maxLevels));
+    if (options.targetNodes !== undefined) form.append('targetNodes', String(options.targetNodes));
+    if (options.targetRatio !== undefined) form.append('targetRatio', String(options.targetRatio));
+    if (options.format) form.append('format', options.format);
+    const { data, error } = await supabase.functions.invoke('simplify-api/upload', { body: form });
+    if (error) throw error;
+    return data as UploadResponse;
+  },
+
   /** GraphQL passthrough. */
   graphql<T = unknown>(query: string, variables?: Record<string, unknown>): Promise<{ data?: T; errors?: Array<{ message: string }> }> {
     return invoke('graphql', { query, variables });
