@@ -30,6 +30,8 @@ export { marchingCubes, meshFromDensity } from './marchingCubes';
 export type { DensityField, MarchingCubesOptions } from './marchingCubes';
 export { exportSTL, exportSTLBinary, exportOBJ, exportMesh } from './meshExport';
 export type { ExportFormat, ExportOptions } from './meshExport';
+export { analyzeWatertightness, sealSmallHoles, ensureWatertight } from './meshWatertight';
+export type { WatertightReport, SealOptions, SealResult } from './meshWatertight';
 export { proposalToMesh } from './proposalMesh';
 export type { ProposalMeshOptions, ProposalMeshResult } from './proposalMesh';
 export type {
