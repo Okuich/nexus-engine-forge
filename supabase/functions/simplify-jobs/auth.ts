@@ -186,6 +186,7 @@ export const ROUTE_LIMITS: Record<string, RouteLimit & { scope?: Scope }> = {
   create:      { capacity: 30,  windowMs: 60_000, scope: 'jobs:write' },
   batch:       { capacity: 5,   windowMs: 60_000, scope: 'jobs:write' },
   cancel:      { capacity: 60,  windowMs: 60_000, scope: 'jobs:write' },
+  retry:       { capacity: 30,  windowMs: 60_000, scope: 'jobs:write' },
   batchCancel: { capacity: 30,  windowMs: 60_000, scope: 'jobs:write' },
   status:      { capacity: 600, windowMs: 60_000, scope: 'jobs:read'  },
   batchStatus: { capacity: 600, windowMs: 60_000, scope: 'jobs:read'  },
