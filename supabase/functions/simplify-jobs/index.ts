@@ -53,6 +53,26 @@ const CreateBody = z.object({
   params: ParamsSchema,
 });
 
+// Batch: up to 64 meshes per request, optional shared defaults.
+const BatchItemSchema = z.object({
+  label: z.string().max(120).optional(),
+  mesh: MeshSchema,
+  jobType: z.enum(['lods', 'graph', 'inference']).optional(),
+  params: ParamsSchema.optional(),
+});
+const BatchBody = z.object({
+  name: z.string().max(120).optional(),
+  defaults: z
+    .object({
+      jobType: z.enum(['lods', 'graph', 'inference']).optional(),
+      params: ParamsSchema.optional(),
+    })
+    .optional(),
+  /** Max parallel job runs while draining the batch (1–8). */
+  concurrency: z.number().int().min(1).max(8).optional(),
+  items: z.array(BatchItemSchema).min(1).max(64),
+});
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
