@@ -1066,8 +1066,50 @@ export type Database = {
           },
         ]
       }
+      simplification_batches: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          metadata: Json
+          name: string | null
+          status: string
+          tenant_id: string | null
+          total_jobs: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_jobs?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_jobs?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       simplification_jobs: {
         Row: {
+          batch_id: string | null
+          batch_index: number | null
+          batch_label: string | null
           completed_at: string | null
           created_at: string
           error_message: string | null
@@ -1087,6 +1129,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          batch_id?: string | null
+          batch_index?: number | null
+          batch_label?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null
@@ -1106,6 +1151,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          batch_id?: string | null
+          batch_index?: number | null
+          batch_label?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null

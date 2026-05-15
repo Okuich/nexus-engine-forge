@@ -81,7 +81,84 @@ export const simplifyJobsApi = {
       method: 'GET',
       query: { limit: String(limit) },
     }).then((r) => r.jobs),
+
+  // ── Batch (queue-backed bulk) ────────────────────────────────────────────
+  createBatch: (input: CreateBatchInput) =>
+    invoke<CreateBatchResult>('batch', { method: 'POST', body: input }),
+
+  batchStatus: (batchId: string) =>
+    invoke<BatchStatusResult>('batchStatus', {
+      method: 'GET',
+      query: { id: batchId },
+    }),
+
+  cancelBatch: (batchId: string) =>
+    invoke<{ ok: true }>('batchCancel', { method: 'POST', body: { batchId } }),
+
+  listBatches: (limit = 25) =>
+    invoke<{ batches: SimplificationBatch[] }>('batchList', {
+      method: 'GET',
+      query: { limit: String(limit) },
+    }).then((r) => r.batches),
 };
+
+export interface SimplificationBatch {
+  id: string;
+  user_id: string;
+  name: string | null;
+  total_jobs: number;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'partial';
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface BatchItemInput {
+  label?: string;
+  mesh: { positions: number[]; indices?: number[] };
+  jobType?: SimplificationJobType;
+  params?: SimplificationJobParams;
+}
+
+export interface CreateBatchInput {
+  name?: string;
+  defaults?: { jobType?: SimplificationJobType; params?: SimplificationJobParams };
+  /** Max parallel job runs (1–8). Defaults to 3 server-side. */
+  concurrency?: number;
+  items: BatchItemInput[];
+}
+
+export interface CreateBatchResult {
+  batchId: string;
+  status: 'queued';
+  total: number;
+  concurrency: number;
+  jobIds: string[];
+}
+
+export interface BatchStatusResult {
+  batch: SimplificationBatch;
+  jobs: Array<
+    Pick<
+      SimplificationJob,
+      | 'id'
+      | 'job_type'
+      | 'status'
+      | 'progress'
+      | 'message'
+      | 'input_triangles'
+      | 'output_triangles'
+      | 'result_path'
+      | 'error_message'
+      | 'started_at'
+      | 'completed_at'
+    > & { batch_index: number; batch_label: string | null }
+  >;
+  tally: { queued: number; running: number; completed: number; failed: number; cancelled: number };
+  progress: number;
+}
+
 
 export interface WaitOptions {
   intervalMs?: number;
@@ -122,4 +199,28 @@ export async function downloadSimplificationResult(job: SimplificationJob): Prom
   const res = await fetch(job.downloadUrl);
   if (!res.ok) throw new Error(`download failed: ${res.status}`);
   return res.json();
+}
+
+/**
+ * Poll a batch until every job reaches a terminal state.
+ * Calls `onProgress` with the rolled-up tally + per-job snapshots.
+ */
+export async function waitForSimplificationBatch(
+  batchId: string,
+  opts: WaitOptions & {
+    onProgress?: (snapshot: BatchStatusResult) => void;
+  } = {},
+): Promise<BatchStatusResult> {
+  const interval = Math.max(750, opts.intervalMs ?? 2000);
+  const deadline = Date.now() + (opts.timeoutMs ?? 30 * 60_000);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const snap = await simplifyJobsApi.batchStatus(batchId);
+    opts.onProgress?.(snap);
+    const terminal = ['completed', 'failed', 'cancelled', 'partial'];
+    if (terminal.includes(snap.batch.status)) return snap;
+    if (Date.now() > deadline) throw new Error('batch polling timed out');
+    await new Promise((r) => setTimeout(r, interval));
+  }
 }
