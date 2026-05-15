@@ -72,14 +72,25 @@ describe('mesh watertightness', () => {
 
   it('exportSTL with ensureWatertight seals before serialization', () => {
     const open: RawMesh = { positions: tetraPositions, indices: tetraIndicesOpen };
-    let report: { isWatertight: boolean; triangleCount: number } | null = null;
+    let payload: {
+      before: { isWatertight: boolean; triangleCount: number };
+      after: { isWatertight: boolean; triangleCount: number };
+      sealed: boolean;
+      sealedLoops: number;
+      addedTriangles: number;
+    } | null = null;
     const stl = exportSTL(open, {
       ensureWatertight: true,
-      onWatertightReport: r => { report = r; },
+      onWatertightReport: r => { payload = r; },
     });
-    expect(report).not.toBeNull();
-    expect(report!.isWatertight).toBe(true);
-    expect(report!.triangleCount).toBe(4);
+    expect(payload).not.toBeNull();
+    expect(payload!.before.isWatertight).toBe(false);
+    expect(payload!.before.triangleCount).toBe(3);
+    expect(payload!.after.isWatertight).toBe(true);
+    expect(payload!.after.triangleCount).toBe(4);
+    expect(payload!.sealed).toBe(true);
+    expect(payload!.sealedLoops).toBeGreaterThan(0);
+    expect(payload!.addedTriangles).toBeGreaterThan(0);
     // Sealed STL should contain 4 facets, not 3.
     const facetCount = (stl.match(/facet normal/g) ?? []).length;
     expect(facetCount).toBe(4);
