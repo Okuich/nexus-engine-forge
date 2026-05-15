@@ -77,4 +77,42 @@ describe('topology-api iteration stream', () => {
     // We always get at least the open event.
     expect(events[0].event).toBe('open');
   });
+
+  it('emits densityPreview on intermediate iterations and full density only on the final one', async () => {
+    const stream = buildIterationStream(baseReq, {
+      throttleMs: 0, maxIterations: 4, previewSize: 4, fullSize: 8, includeDensity: true,
+    });
+    const events = await collect(stream);
+    const iters = events.filter(e => e.event === 'iteration').map(e => e.data.data);
+    expect(iters).toHaveLength(4);
+    // Intermediate (1..3): only densityPreview, no full density.
+    for (const s of iters.slice(0, -1)) {
+      expect(s.isFinal).toBe(false);
+      expect(s.density).toBeUndefined();
+      expect(s.densityPreview).toHaveLength(4 * 4 * 4);
+      expect(s.previewDims).toEqual([4, 4, 4]);
+    }
+    // Final iteration: full density, no preview.
+    const last = iters[iters.length - 1];
+    expect(last.isFinal).toBe(true);
+    expect(last.densityPreview).toBeUndefined();
+    expect(last.density).toHaveLength(8 * 8 * 8);
+    expect(last.dims).toEqual([8, 8, 8]);
+    // Final payload should be larger than intermediates.
+    const interSize = JSON.stringify(iters[0]).length;
+    const finalSize = JSON.stringify(last).length;
+    expect(finalSize).toBeGreaterThan(interSize);
+  });
+
+  it('omits density entirely when includeDensity=false', async () => {
+    const stream = buildIterationStream(baseReq, {
+      throttleMs: 0, maxIterations: 3, includeDensity: false,
+    });
+    const events = await collect(stream);
+    const iters = events.filter(e => e.event === 'iteration').map(e => e.data.data);
+    for (const s of iters) {
+      expect(s.density).toBeUndefined();
+      expect(s.densityPreview).toBeUndefined();
+    }
+  });
 });

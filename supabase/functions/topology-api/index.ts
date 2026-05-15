@@ -65,6 +65,9 @@ const StreamRequest = ComplianceRequest.extend({
   throttleMs: z.number().min(0).max(5000).optional(),
   maxIterations: z.number().int().min(1).max(500).optional(),
   volumeFraction: z.number().min(0.05).max(1).optional(),
+  includeDensity: z.boolean().optional(),
+  previewSize: z.number().int().min(2).max(16).optional(),
+  fullSize: z.number().int().min(4).max(48).optional(),
 });
 
 
@@ -189,8 +192,8 @@ async function handleStream(req: Request): Promise<Response> {
   if (!parsed.success) {
     return json({ error: 'invalid request', details: parsed.error.flatten() }, 400);
   }
-  const { throttleMs, maxIterations, volumeFraction, ...complianceReq } = parsed.data;
-  const opts: StreamOptions = { throttleMs, maxIterations, volumeFraction };
+  const { throttleMs, maxIterations, volumeFraction, includeDensity, previewSize, fullSize, ...complianceReq } = parsed.data;
+  const opts: StreamOptions = { throttleMs, maxIterations, volumeFraction, includeDensity, previewSize, fullSize };
   const stream = buildIterationStream(complianceReq, opts, req.signal);
   return new Response(stream, { headers: streamHeaders() });
 }
