@@ -1,0 +1,31 @@
+{{- if and .Values.web.enabled .Values.web.ingress.enabled -}}
+{{- $ctx := dict "root" . "component" "web" -}}
+{{- $svc := include "midwater.componentName" $ctx -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $svc }}
+  labels: {{- include "midwater.labels" . | nindent 4 }}
+  {{- with .Values.web.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.web.ingress.className }}
+  rules:
+    {{- range .Values.web.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ $svc }}
+                port: { number: {{ $.Values.web.service.port }} }
+          {{- end }}
+    {{- end }}
+  {{- with .Values.web.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
