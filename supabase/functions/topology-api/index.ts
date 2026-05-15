@@ -59,8 +59,6 @@ const ComplianceRequest = z.object({
   supports: z.array(SupportConditionJSON).max(1024).optional(),
 });
 
-import { evaluateCompliance, type ComplianceRequest as ComplianceRequestT } from './compliance.ts';
-export { evaluateCompliance } from './compliance.ts';
 
 // ─── HTTP plumbing ─────────────────────────────────────────────────────────
 
