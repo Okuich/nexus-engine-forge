@@ -164,6 +164,67 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+/**
+ * Computes per-case aggregation weights AND the aggregated compliance on the
+ * GPU from the C-float `perCase` buffer. Output layout in `weightsAgg`:
+ *   [0..C-1] = per-case weights consumed by WGSL_AGGREGATE
+ *   [C]      = aggregated compliance (telemetry / history)
+ *
+ * Modes (matches `computeAggregationWeights`):
+ *   mode = 0u → weighted-sum: w_c = caseW_c, agg = Σ caseW_c · c_c
+ *   mode = 1u → KS soft-max:  w_c = softmax(ρ·caseW_c·c_c)_c · caseW_c,
+ *                              agg = (log Σ exp(ρ·caseW·c) + M) / ρ
+ *
+ * Single-thread dispatch: C is small (typically ≤ 32) so a serial reduction
+ * is faster than a parallel one once you account for barrier overhead, and
+ * collapsing into one invocation keeps the WGSL trivially auditable for
+ * numerical-stability bugs (max-shift before exp).
+ */
+const WGSL_KS_WEIGHTS = /* wgsl */ `
+struct Params {
+  numCases: u32,
+  mode: u32,      // 0 = weighted-sum, 1 = ks
+  ksRho: f32,
+  _pad: u32,
+};
+@group(0) @binding(0) var<uniform> P: Params;
+@group(0) @binding(1) var<storage, read> perCase: array<f32>;
+@group(0) @binding(2) var<storage, read> caseW: array<f32>;
+@group(0) @binding(3) var<storage, read_write> weightsAgg: array<f32>;
+
+@compute @workgroup_size(1)
+fn main() {
+  let C = P.numCases;
+  if (P.mode == 0u) {
+    var agg: f32 = 0.0;
+    for (var c: u32 = 0u; c < C; c = c + 1u) {
+      weightsAgg[c] = caseW[c];
+      agg = agg + caseW[c] * perCase[c];
+    }
+    weightsAgg[C] = agg;
+    return;
+  }
+  // KS soft-max with max-shift for numerical stability.
+  var M: f32 = -3.4e38;
+  for (var c: u32 = 0u; c < C; c = c + 1u) {
+    let s = P.ksRho * caseW[c] * perCase[c];
+    if (s > M) { M = s; }
+  }
+  var denom: f32 = 0.0;
+  for (var c: u32 = 0u; c < C; c = c + 1u) {
+    let s = P.ksRho * caseW[c] * perCase[c];
+    let e = exp(s - M);
+    weightsAgg[c] = e;          // stash exp(...) — finalized below
+    denom = denom + e;
+  }
+  let invDenom = 1.0 / max(denom, 1e-30);
+  for (var c: u32 = 0u; c < C; c = c + 1u) {
+    weightsAgg[c] = weightsAgg[c] * invDenom * caseW[c];
+  }
+  weightsAgg[C] = (log(max(denom, 1e-30)) + M) / P.ksRho;
+}
+`;
+
 const WGSL_FILTER = /* wgsl */ `
 struct Params { dims: vec3<u32>, rmin: f32, r: u32 };
 @group(0) @binding(0) var<uniform> P: Params;
@@ -256,6 +317,7 @@ interface MultiCtx {
   diff: GPUComputePipeline;
   sensSlot: GPUComputePipeline;
   reduce: GPUComputePipeline;
+  ksWeights: GPUComputePipeline;
   aggregate: GPUComputePipeline;
   filter: GPUComputePipeline;
 }
@@ -278,6 +340,7 @@ async function ensureCtx(): Promise<MultiCtx> {
     diff: make(WGSL_DIFFUSION),
     sensSlot: make(WGSL_SENS_SLOT),
     reduce: make(WGSL_REDUCE_PER_CASE),
+    ksWeights: make(WGSL_KS_WEIGHTS),
     aggregate: make(WGSL_AGGREGATE),
     filter: make(WGSL_FILTER),
   };
@@ -440,11 +503,17 @@ export async function runSIMPGPUMultiLoad(
   const aggSens = buf(device, bytes, STO);
   const filtSens = buf(device, bytes, STO);
   const perCase = buf(device, C * 4, STO);
-  const weightsBuf = buf(device, C * 4, STO);
+  // weightsAgg layout: [0..C-1] = per-case weights consumed by aggregate kernel,
+  // [C] = aggregated compliance scalar. One readback delivers both.
+  const weightsAggBuf = buf(device, (C + 1) * 4, STO);
+  const caseWeightsBuf = buf(device, C * 4, STO);
   // Per-case source/support are uploaded into single shared buffers each case.
   const sourceMaskBuf = buf(device, bytes, STO);
   const sourceMagBuf = buf(device, bytes, STO);
   const supportBuf = buf(device, bytes, STO);
+
+  // Static caseWeights upload (constant for the entire optimization).
+  wF32(device, caseWeightsBuf, new Float32Array(cases.map(c => c.weight)));
 
   // ── Uniform buffers ──
   // diffusion params: dims(vec3 u32 padded=16) + 4 floats(16) = 32
@@ -463,6 +532,14 @@ export async function runSIMPGPUMultiLoad(
   {
     const ab = new ArrayBuffer(16); new Uint32Array(ab).set([N, C]);
     device.queue.writeBuffer(reduceParamsBuf, 0, ab);
+  }
+  // ks-weights params: numCases(u32) mode(u32) ksRho(f32) _pad(u32) = 16
+  const ksParamsBuf = buf(device, 16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
+  {
+    const ab = new ArrayBuffer(16);
+    const u = new Uint32Array(ab); const f = new Float32Array(ab);
+    u[0] = C; u[1] = aggregation === 'ks' ? 1 : 0; f[2] = ksRho; u[3] = 0;
+    device.queue.writeBuffer(ksParamsBuf, 0, ab);
   }
   // aggregate params: n, numCases
   const aggParamsBuf = buf(device, 16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
@@ -576,28 +653,47 @@ export async function runSIMPGPUMultiLoad(
       device.queue.submit([enc.finish()]);
     }
 
-    // Readback #1: tiny C-float per-case compliance.
-    const perCaseArr = await readF32(device, perCase, C);
-    readbacks++;
-    lastPerCase = Array.from(perCaseArr);
+    // ── GPU softmax / weighted-sum: weights[C] + aggCompliance scalar ──
+    // Replaces the previous CPU `computeAggregationWeights` call AND the
+    // weights-buffer upload. Single dispatch; output is read back below.
+    {
+      const bg = device.createBindGroup({
+        layout: ctx.ksWeights.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: ksParamsBuf } },
+          { binding: 1, resource: { buffer: perCase } },
+          { binding: 2, resource: { buffer: caseWeightsBuf } },
+          { binding: 3, resource: { buffer: weightsAggBuf } },
+        ],
+      });
+      const enc = device.createCommandEncoder();
+      const pass = enc.beginComputePass();
+      pass.setPipeline(ctx.ksWeights);
+      pass.setBindGroup(0, bg);
+      pass.dispatchWorkgroups(1, 1, 1);
+      pass.end();
+      device.queue.submit([enc.finish()]);
+    }
 
-    // CPU computes weights for the GPU aggregation pass.
-    const caseWeights = cases.map(c => c.weight);
-    const { weights, aggCompliance } = computeAggregationWeights(
-      lastPerCase, caseWeights, aggregation, ksRho,
-    );
+    // Readback #1: tiny (C+1)-float weights+aggCompliance (constant w.r.t N).
+    // The trailing slot is the aggregated compliance scalar; preceding C
+    // slots stay on-GPU and are bound directly into the aggregate kernel.
+    const weightsAggArr = await readF32(device, weightsAggBuf, C + 1);
+    readbacks++;
+    const aggCompliance = weightsAggArr[C];
     lastAgg = aggCompliance;
     history.push(aggCompliance);
-    wF32(device, weightsBuf, new Float32Array(weights));
 
     // ── GPU aggregation: aggSens[i] = Σ_c weights[c] · sens[c·N + i] ──
+    // Binds weightsAggBuf directly — the WGSL kernel reads only [0..C-1],
+    // so the trailing aggCompliance slot is harmlessly ignored.
     {
       const bg = device.createBindGroup({
         layout: ctx.aggregate.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: aggParamsBuf } },
           { binding: 1, resource: { buffer: sensAll } },
-          { binding: 2, resource: { buffer: weightsBuf } },
+          { binding: 2, resource: { buffer: weightsAggBuf } },
           { binding: 3, resource: { buffer: aggSens } },
         ],
       });
@@ -642,23 +738,39 @@ export async function runSIMPGPUMultiLoad(
     for (let i = 0; i < N; i++) change = Math.max(change, Math.abs(density[i] - prev[i]));
     prev.set(density);
 
-    options.onIteration?.({
-      iteration: iter,
-      density: new Float32Array(density),
-      compliance: aggCompliance,
-      perCaseCompliance: lastPerCase.slice(),
-      volumeFraction: updated.vol,
-      change,
-      elapsedMs: elapsed,
-    } satisfies TopoIterationState);
+    // perCaseCompliance is only needed for the optional telemetry callback.
+    // Read it back lazily so the default path stays at the previous 2-readback
+    // budget (weightsAgg + filtSens), independent of case count.
+    if (options.onIteration) {
+      const perCaseArr = await readF32(device, perCase, C);
+      readbacks++;
+      lastPerCase = Array.from(perCaseArr);
+      options.onIteration({
+        iteration: iter,
+        density: new Float32Array(density),
+        compliance: aggCompliance,
+        perCaseCompliance: lastPerCase.slice(),
+        volumeFraction: updated.vol,
+        change,
+        elapsedMs: elapsed,
+      } satisfies TopoIterationState);
+    }
 
     if (change < tol && iter > 5) { converged = true; break; }
   }
 
+  // If no callback ever ran, surface a final perCase readback so the result
+  // payload still exposes per-case compliance for downstream reporting.
+  if (!options.onIteration && C > 0) {
+    const perCaseArr = await readF32(device, perCase, C);
+    readbacks++;
+    lastPerCase = Array.from(perCaseArr);
+  }
+
   for (const b of [
-    densityBuf, flowA, flowB, sensAll, compAll, aggSens, filtSens, perCase, weightsBuf,
+    densityBuf, flowA, flowB, sensAll, compAll, aggSens, filtSens, perCase, weightsAggBuf, caseWeightsBuf,
     sourceMaskBuf, sourceMagBuf, supportBuf,
-    diffParamsBuf, sensParamsBuf, reduceParamsBuf, aggParamsBuf, filterParamsBuf,
+    diffParamsBuf, sensParamsBuf, reduceParamsBuf, ksParamsBuf, aggParamsBuf, filterParamsBuf,
   ]) b.destroy();
 
   return {
