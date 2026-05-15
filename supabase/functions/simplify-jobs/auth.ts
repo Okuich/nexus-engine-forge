@@ -96,8 +96,14 @@ export async function resolvePrincipal(req: Request): Promise<Principal | null> 
     };
   }
 
-  // 2. Otherwise fall back to a JWT.
-  const auth = req.headers.get('Authorization') ?? '';
+  // 2. Otherwise fall back to a JWT from the Authorization header or, for
+  //    transports that can't set headers (e.g. EventSource), an `access_token`
+  //    query parameter.
+  let auth = req.headers.get('Authorization') ?? '';
+  if (!auth.startsWith('Bearer ')) {
+    const tokenParam = new URL(req.url).searchParams.get('access_token');
+    if (tokenParam) auth = `Bearer ${tokenParam}`;
+  }
   if (!auth.startsWith('Bearer ')) return null;
   const client = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: auth } },
