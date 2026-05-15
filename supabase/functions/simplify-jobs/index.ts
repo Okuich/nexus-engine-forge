@@ -534,6 +534,8 @@ async function handle(req: Request): Promise<Response> {
           completed_at: tally.other === 0 ? new Date().toISOString() : null,
         })
         .eq('id', batch.id);
+      batchSpan?.setAttr('batch.final_status', finalStatus);
+      batchSpan?.end();
     };
 
     if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(drain());
@@ -546,6 +548,7 @@ async function handle(req: Request): Promise<Response> {
         total: prepared.length,
         concurrency,
         jobIds: jobRows.map((r) => r.id),
+        traceId: reqSpan?.traceId,
       },
       202,
     );
