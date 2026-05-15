@@ -10,19 +10,21 @@
  *
  * The actual simplification runs in a background task via
  * `EdgeRuntime.waitUntil`, so the HTTP response returns immediately
- * and the client polls `/status` for progress (0–100). Result meshes
- * are written to the private `simplification-results` storage bucket
- * under `<userId>/<jobId>.json` and surfaced via short-lived signed URLs.
+ * and the client polls `/status` for progress (0–100). Result payloads
+ * (LOD chain, coarsened graph, or inference bundle) are written to the
+ * private `simplification-results` storage bucket under
+ * `<userId>/<jobId>.json` and surfaced via short-lived signed URLs.
  */
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3.23.8';
+import { buildLODs, coarsenGraph, meshToArrays } from '../simplify-api/core.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const BUCKET = 'simplification-results';
-const MAX_INPUT_TRIANGLES = 1_000_000;
+const MAX_INPUT_TRIANGLES = 2_000_000; // async path: 10× the sync /lods cap
 
 // ─── EdgeRuntime shim (typings) ─────────────────────────────────────────────
 // deno-lint-ignore no-explicit-any
@@ -35,13 +37,20 @@ const MeshSchema = z.object({
   positions: z.array(z.number()).min(9),
   indices: z.array(z.number()).optional(),
 });
+const ParamsSchema = z
+  .object({
+    levels: z.number().int().min(1).max(8).optional(),
+    ratioPerLevel: z.number().min(0.05).max(0.95).optional(),
+    minTriangles: z.number().int().min(4).optional(),
+    targetNodes: z.number().int().min(1).optional(),
+    targetRatio: z.number().min(0.01).max(0.95).optional(),
+  })
+  .partial()
+  .default({});
 const CreateBody = z.object({
   mesh: MeshSchema,
   jobType: z.enum(['lods', 'graph', 'inference']).default('lods'),
-  params: z
-    .object({ levels: z.number().int().min(1).max(8).optional() })
-    .partial()
-    .default({}),
+  params: ParamsSchema,
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -55,7 +64,7 @@ function jsonResponse(data: unknown, status = 200) {
 async function getUser(req: Request): Promise<{
   user: { id: string } | null;
   client: SupabaseClient;
-} > {
+}> {
   const auth = req.headers.get('Authorization') ?? '';
   const client = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: auth } },
@@ -70,97 +79,124 @@ function admin(): SupabaseClient {
   });
 }
 
-// ─── Inline cluster simplifier (no bundle deps) ─────────────────────────────
 type RawMesh = z.infer<typeof MeshSchema>;
+type Params = z.infer<typeof ParamsSchema>;
 
-function clusterSimplify(mesh: RawMesh, gridResolution: number) {
-  const positions = new Float32Array(mesh.positions);
-  const indices = mesh.indices ? new Uint32Array(mesh.indices) : new Uint32Array(0);
-  const inputVerts = positions.length / 3;
-
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i], y = positions[i + 1], z = positions[i + 2];
-    if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
-    if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
+function b64FromBuffer(buf: ArrayBufferView): string {
+  const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
   }
-  const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
-  const cell = size / Math.max(2, gridResolution);
-
-  const map = new Map<string, { idx: number; sx: number; sy: number; sz: number; n: number }>();
-  const remap = new Uint32Array(inputVerts);
-  for (let v = 0; v < inputVerts; v++) {
-    const x = positions[v * 3], y = positions[v * 3 + 1], z = positions[v * 3 + 2];
-    const key = `${Math.floor((x - minX) / cell)}|${Math.floor((y - minY) / cell)}|${Math.floor((z - minZ) / cell)}`;
-    const e = map.get(key);
-    if (e) { e.sx += x; e.sy += y; e.sz += z; e.n++; remap[v] = e.idx; }
-    else { const idx = map.size; map.set(key, { idx, sx: x, sy: y, sz: z, n: 1 }); remap[v] = idx; }
-  }
-  const outVerts = new Float32Array(map.size * 3);
-  for (const e of map.values()) {
-    outVerts[e.idx * 3] = e.sx / e.n;
-    outVerts[e.idx * 3 + 1] = e.sy / e.n;
-    outVerts[e.idx * 3 + 2] = e.sz / e.n;
-  }
-  const outIdx: number[] = [];
-  for (let t = 0; t < indices.length; t += 3) {
-    const a = remap[indices[t]], b = remap[indices[t + 1]], c = remap[indices[t + 2]];
-    if (a !== b && b !== c && a !== c) outIdx.push(a, b, c);
-  }
-  return {
-    positions: Array.from(outVerts),
-    indices: outIdx,
-    inputTriangles: indices.length / 3,
-    outputTriangles: outIdx.length / 3,
-    inputVertices: inputVerts,
-    outputVertices: outVerts.length / 3,
-  };
+  return btoa(bin);
 }
 
 // ─── Background processing ──────────────────────────────────────────────────
-async function processJob(jobId: string, userId: string, mesh: RawMesh, jobType: string, params: { levels?: number }) {
+async function processJob(
+  jobId: string,
+  userId: string,
+  mesh: RawMesh,
+  jobType: 'lods' | 'graph' | 'inference',
+  params: Params,
+) {
   const db = admin();
   const update = (patch: Record<string, unknown>) =>
     db.from('simplification_jobs').update({ ...patch }).eq('id', jobId);
+  const cancelled = async () => {
+    const { data: row } = await db
+      .from('simplification_jobs').select('status').eq('id', jobId).single();
+    return row?.status === 'cancelled';
+  };
 
   try {
-    await update({ status: 'running', started_at: new Date().toISOString(), progress: 5, message: 'preparing' });
+    await update({
+      status: 'running',
+      started_at: new Date().toISOString(),
+      progress: 5,
+      message: 'preparing',
+    });
 
-    const tris = (mesh.indices?.length ?? 0) / 3;
-    if (tris > MAX_INPUT_TRIANGLES) throw new Error(`triangle count ${tris} exceeds ${MAX_INPUT_TRIANGLES}`);
+    const tris = mesh.indices
+      ? mesh.indices.length / 3
+      : (mesh.positions.length / 9) | 0;
+    if (tris > MAX_INPUT_TRIANGLES) {
+      throw new Error(`triangle count ${tris} exceeds ${MAX_INPUT_TRIANGLES}`);
+    }
 
-    const levels = jobType === 'lods' ? Math.max(1, Math.min(6, params.levels ?? 4)) : 1;
-    const lods: ReturnType<typeof clusterSimplify>[] = [];
-    let inputT = 0;
+    let payload: unknown;
     let outputT = 0;
 
-    for (let l = 0; l < levels; l++) {
-      // Cancellation check
-      const { data: row } = await db
-        .from('simplification_jobs').select('status').eq('id', jobId).single();
-      if (row?.status === 'cancelled') return;
+    if (jobType === 'lods') {
+      const levels = Math.max(1, Math.min(6, params.levels ?? 4));
+      await update({ progress: 15, message: `building ${levels} LODs` });
+      if (await cancelled()) return;
 
-      const ratio = Math.pow(0.5, l);
-      const grid = Math.max(8, Math.round(Math.cbrt(Math.max(tris, 8) * ratio) * 4));
-      const res = clusterSimplify(mesh, grid);
-      lods.push(res);
-      if (l === 0) inputT = res.inputTriangles;
-      outputT = res.outputTriangles;
-
-      const pct = 10 + Math.floor(((l + 1) / levels) * 80);
-      await update({
-        progress: pct,
-        message: `level ${l + 1}/${levels} · ${res.outputTriangles} tris`,
+      const result = buildLODs(mesh, {
+        levels,
+        ratioPerLevel: params.ratioPerLevel,
+        minTriangles: params.minTriangles,
       });
+      outputT = result.lods[result.lods.length - 1]?.stats.outputTriangles ?? 0;
+      payload = { jobType, lods: result.lods, totalElapsedMs: result.totalElapsedMs };
+      await update({ progress: 85, message: `produced ${result.lods.length} LODs` });
+    } else if (jobType === 'graph') {
+      await update({ progress: 20, message: 'coarsening face graph' });
+      if (await cancelled()) return;
+      const m = meshToArrays(mesh);
+      const graph = coarsenGraph(m, params.targetNodes, params.targetRatio);
+      outputT = graph.nodeCount;
+      payload = { jobType, graph };
+      await update({ progress: 85, message: `${graph.nodeCount} nodes / ${graph.edgeCount} edges` });
+    } else {
+      // inference: LODs + graph + flat feature matrix
+      await update({ progress: 15, message: 'building LODs' });
+      if (await cancelled()) return;
+      const lod = buildLODs(mesh, {
+        levels: Math.max(1, Math.min(6, params.levels ?? 3)),
+        ratioPerLevel: params.ratioPerLevel,
+        minTriangles: params.minTriangles,
+      });
+      await update({ progress: 50, message: 'coarsening graph' });
+      if (await cancelled()) return;
+      const m = meshToArrays(mesh);
+      const graph = coarsenGraph(m, params.targetNodes, params.targetRatio);
+
+      const featureDim = 7;
+      const features = new Float32Array(graph.nodeCount * featureDim);
+      for (let i = 0; i < graph.nodeCount; i++) {
+        const nf = graph.nodeFeatures[i];
+        const off = i * featureDim;
+        features[off] = nf.area;
+        features[off + 1] = nf.avgNormal[0];
+        features[off + 2] = nf.avgNormal[1];
+        features[off + 3] = nf.avgNormal[2];
+        features[off + 4] = nf.avgCurvature;
+        features[off + 5] = graph.clusters[i].length;
+        features[off + 6] = lod.lods.length - 1;
+      }
+
+      outputT = graph.nodeCount;
+      payload = {
+        jobType,
+        coarseMesh: lod.lods[lod.lods.length - 1].mesh,
+        lods: lod.lods,
+        graph,
+        features: b64FromBuffer(features),
+        featureDim,
+        nodeToFaces: graph.clusters,
+      };
+      await update({ progress: 85, message: 'serializing inference bundle' });
     }
+
+    if (await cancelled()) return;
 
     // Upload result to private storage
     const path = `${userId}/${jobId}.json`;
-    const payload = JSON.stringify({ jobType, levels: lods });
+    const serialized = JSON.stringify(payload);
     const { error: upErr } = await db.storage
       .from(BUCKET)
-      .upload(path, new Blob([payload], { type: 'application/json' }), {
+      .upload(path, new Blob([serialized], { type: 'application/json' }), {
         upsert: true,
         contentType: 'application/json',
       });
@@ -170,10 +206,10 @@ async function processJob(jobId: string, userId: string, mesh: RawMesh, jobType:
       status: 'completed',
       progress: 100,
       message: 'done',
-      input_triangles: inputT,
+      input_triangles: tris,
       output_triangles: outputT,
       result_path: path,
-      result_size_bytes: payload.length,
+      result_size_bytes: serialized.length,
       completed_at: new Date().toISOString(),
     });
   } catch (err) {
@@ -204,7 +240,9 @@ async function handle(req: Request): Promise<Response> {
     const parsed = CreateBody.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonResponse({ error: parsed.error.flatten() }, 400);
 
-    const tris = (parsed.data.mesh.indices?.length ?? 0) / 3;
+    const tris = parsed.data.mesh.indices
+      ? parsed.data.mesh.indices.length / 3
+      : (parsed.data.mesh.positions.length / 9) | 0;
     if (tris > MAX_INPUT_TRIANGLES) {
       return jsonResponse({ error: `triangles exceed ${MAX_INPUT_TRIANGLES}` }, 413);
     }
@@ -224,7 +262,13 @@ async function handle(req: Request): Promise<Response> {
       .single();
     if (error) return jsonResponse({ error: error.message }, 500);
 
-    const work = processJob(data.id, user.id, parsed.data.mesh, parsed.data.jobType, parsed.data.params);
+    const work = processJob(
+      data.id,
+      user.id,
+      parsed.data.mesh,
+      parsed.data.jobType,
+      parsed.data.params,
+    );
     if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work);
     else void work;
 
@@ -260,7 +304,11 @@ async function handle(req: Request): Promise<Response> {
     if (!body.jobId) return jsonResponse({ error: 'jobId required' }, 400);
     const { error } = await db
       .from('simplification_jobs')
-      .update({ status: 'cancelled', message: 'cancelled by user', completed_at: new Date().toISOString() })
+      .update({
+        status: 'cancelled',
+        message: 'cancelled by user',
+        completed_at: new Date().toISOString(),
+      })
       .eq('id', body.jobId)
       .eq('user_id', user.id)
       .in('status', ['queued', 'running']);
