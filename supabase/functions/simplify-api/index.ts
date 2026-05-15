@@ -102,12 +102,6 @@ const InferenceRequestSchema = z.object({
 
 // ─── REST handlers ──────────────────────────────────────────────────────────
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
 function json(body: unknown, status = 200, extraHeaders?: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
