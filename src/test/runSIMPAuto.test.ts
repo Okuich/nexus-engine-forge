@@ -27,8 +27,8 @@ describe('runSIMPAuto fallback', () => {
   const domain = voxelizeForTopology(unitBox(), 12);
   const loads: LoadCondition[] = [{ point: [0.9, 0.5, 0.5], force: [0, -1, 0] }];
   const supports: SupportCondition[] = [
-    { point: [0.1, 0.1, 0.5], type: 'fixed' },
-    { point: [0.1, 0.9, 0.5], type: 'fixed' },
+    { point: [0.1, 0.1, 0.5], fixed: true },
+    { point: [0.1, 0.9, 0.5], fixed: true },
   ];
 
   it('falls back to CPU when WebGPU is unavailable', async () => {
