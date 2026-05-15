@@ -22,7 +22,9 @@
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3.23.8';
 import { evaluateCompliance, type ComplianceRequest as ComplianceRequestT } from './compliance.ts';
+import { buildIterationStream, streamHeaders, type StreamOptions } from './stream.ts';
 export { evaluateCompliance } from './compliance.ts';
+export { buildIterationStream } from './stream.ts';
 
 const SCHEMA = 'lovable.topology/v1' as const;
 
