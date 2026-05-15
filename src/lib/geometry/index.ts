@@ -249,6 +249,12 @@ export {
   stubTopologyBackend,
   TopologyNotImplementedError,
   TopologyBackendError,
+  // Capability-aware dispatch + integration hooks
+  planDispatch as planTopologyDispatch,
+  adaptFaceAdjacency,
+  adaptEdgeList as adaptTopologyEdgeList,
+  analyzeFaceAdjacency,
+  findCriticalFaces,
 } from './topologyReasoning';
 export type {
   TopologyBackend,
@@ -275,6 +281,11 @@ export type {
   TopologyResult,
   TopologyDispatch,
   TopologyCapabilityFlag,
+  // Integration hook types
+  DispatchPlan as TopologyDispatchPlan,
+  CreateGraphSpec as TopologyCreateGraphSpec,
+  AnalyzeAdjacencyOptions,
+  AnalyzeAdjacencyResult,
 } from './topologyReasoning';
 
 // ── Three.js integration (existing, backward-compatible) ────────
