@@ -129,10 +129,22 @@ async function processJob(
   mesh: RawMesh,
   jobType: 'lods' | 'graph' | 'inference',
   params: Params,
+  parentSpan?: Span,
 ) {
+  const span = parentSpan
+    ? parentSpan.child(`processJob.${jobType}`)
+    : new Span(`processJob.${jobType}`, {
+        traceId: newTraceId(),
+        spanId: newSpanId(),
+        sampled: true,
+      });
+  span.setAttrs({ 'job.id': jobId, 'job.type': jobType, 'user.id': userId });
+
   const db = admin();
   const update = (patch: Record<string, unknown>) =>
-    db.from('simplification_jobs').update({ ...patch }).eq('id', jobId);
+    db.from('simplification_jobs')
+      .update({ ...patch, trace_id: span.traceId })
+      .eq('id', jobId);
   const cancelled = async () => {
     const { data: row } = await db
       .from('simplification_jobs').select('status').eq('id', jobId).single();
