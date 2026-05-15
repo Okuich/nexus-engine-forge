@@ -66,7 +66,19 @@ export interface InferenceResponse {
   elapsedMs: number;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
+export interface UploadResponse {
+  upload: {
+    filename: string;
+    format: 'stl' | 'obj';
+    bytes: number;
+    triangleCount: number;
+    vertexCount: number;
+  };
+  lods: SimplifiedLODOut[];
+  coarseMesh: SerializedMesh;
+  graph: SimplifiedGraphOut;
+  elapsedMs: number;
+}
 
 /** Decode a base64-encoded Float32Array. */
 export function decodeFloat32(b64: string): Float32Array {
