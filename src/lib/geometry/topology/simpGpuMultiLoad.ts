@@ -317,6 +317,7 @@ interface MultiCtx {
   diff: GPUComputePipeline;
   sensSlot: GPUComputePipeline;
   reduce: GPUComputePipeline;
+  ksWeights: GPUComputePipeline;
   aggregate: GPUComputePipeline;
   filter: GPUComputePipeline;
 }
@@ -339,6 +340,7 @@ async function ensureCtx(): Promise<MultiCtx> {
     diff: make(WGSL_DIFFUSION),
     sensSlot: make(WGSL_SENS_SLOT),
     reduce: make(WGSL_REDUCE_PER_CASE),
+    ksWeights: make(WGSL_KS_WEIGHTS),
     aggregate: make(WGSL_AGGREGATE),
     filter: make(WGSL_FILTER),
   };
