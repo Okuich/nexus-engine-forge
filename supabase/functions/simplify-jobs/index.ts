@@ -19,6 +19,14 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3.23.8';
 import { buildLODs, coarsenGraph, meshToArrays } from '../simplify-api/core.ts';
+import {
+  Span,
+  log,
+  startSpanFromRequest,
+  traceResponseHeaders,
+  newTraceId,
+  newSpanId,
+} from './tracing.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -121,10 +129,22 @@ async function processJob(
   mesh: RawMesh,
   jobType: 'lods' | 'graph' | 'inference',
   params: Params,
+  parentSpan?: Span,
 ) {
+  const span = parentSpan
+    ? parentSpan.child(`processJob.${jobType}`)
+    : new Span(`processJob.${jobType}`, {
+        traceId: newTraceId(),
+        spanId: newSpanId(),
+        sampled: true,
+      });
+  span.setAttrs({ 'job.id': jobId, 'job.type': jobType, 'user.id': userId });
+
   const db = admin();
   const update = (patch: Record<string, unknown>) =>
-    db.from('simplification_jobs').update({ ...patch }).eq('id', jobId);
+    db.from('simplification_jobs')
+      .update({ ...patch })
+      .eq('id', jobId);
   const cancelled = async () => {
     const { data: row } = await db
       .from('simplification_jobs').select('status').eq('id', jobId).single();
@@ -234,12 +254,19 @@ async function processJob(
       result_size_bytes: serialized.length,
       completed_at: new Date().toISOString(),
     });
+    span.event('job.completed', { input_triangles: tris, output_triangles: outputT });
+    span.setAttrs({ 'job.input_triangles': tris, 'job.output_triangles': outputT });
   } catch (err) {
+    const message = (err as Error).message;
+    span.event('job.failed', { error: message }, 'error');
+    span.setStatus('error', message);
     await update({
       status: 'failed',
-      error_message: (err as Error).message,
+      error_message: message,
       completed_at: new Date().toISOString(),
     });
+  } finally {
+    span.end();
   }
 }
 
@@ -330,17 +357,19 @@ async function handle(req: Request): Promise<Response> {
       .single();
     if (error) return jsonResponse({ error: error.message }, 500);
 
+    const reqSpan = (req as unknown as { _span?: Span })._span;
     const work = processJob(
       data.id,
       user.id,
       parsed.data.mesh,
       parsed.data.jobType,
       parsed.data.params,
+      reqSpan,
     );
     if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work);
     else void work;
 
-    return jsonResponse({ jobId: data.id, status: 'queued' }, 202);
+    return jsonResponse({ jobId: data.id, status: 'queued', traceId: reqSpan?.traceId }, 202);
   }
 
   // ── status ────────────────────────────────────────────────────────────────
@@ -455,6 +484,10 @@ async function handle(req: Request): Promise<Response> {
 
     // Drain the queue with bounded concurrency in the background.
     const indexToId = new Map(jobRows.map((r) => [r.batch_index as number, r.id as string]));
+    const reqSpan = (req as unknown as { _span?: Span })._span;
+    const batchSpan = reqSpan
+      ? reqSpan.child(`batch.drain`).setAttrs({ 'batch.id': batch.id, 'batch.size': prepared.length })
+      : undefined;
     const drain = async () => {
       let nextIdx = 0;
       const workers: Promise<void>[] = [];
@@ -465,7 +498,7 @@ async function handle(req: Request): Promise<Response> {
           const p = prepared[myIdx];
           const jobId = indexToId.get(p.idx)!;
           try {
-            await processJob(jobId, user.id, p.mesh, p.jobType, p.params);
+            await processJob(jobId, user.id, p.mesh, p.jobType, p.params, batchSpan);
           } catch (_) {
             // processJob already records failure; keep draining.
           }
@@ -501,6 +534,8 @@ async function handle(req: Request): Promise<Response> {
           completed_at: tally.other === 0 ? new Date().toISOString() : null,
         })
         .eq('id', batch.id);
+      batchSpan?.setAttr('batch.final_status', finalStatus);
+      batchSpan?.end();
     };
 
     if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(drain());
@@ -513,6 +548,7 @@ async function handle(req: Request): Promise<Response> {
         total: prepared.length,
         concurrency,
         jobIds: jobRows.map((r) => r.id),
+        traceId: reqSpan?.traceId,
       },
       202,
     );
@@ -652,13 +688,50 @@ async function handle(req: Request): Promise<Response> {
   return jsonResponse({ error: 'not found' }, 404);
 }
 
-// Wrap handle() to decorate successful responses with rate-limit headers.
+// Wrap handle() to start a trace span, decorate every response with trace +
+// rate-limit headers, and emit a structured access log.
 async function handleWithHeaders(req: Request): Promise<Response> {
-  const res = await handle(req);
-  const rl = (req as unknown as { _rl?: Record<string, string> })._rl;
-  if (!rl) return res;
+  const url = new URL(req.url);
+  const route = url.pathname.split('/').pop() ?? '';
+  const span = startSpanFromRequest(req, `http.${req.method} ${route || '/'}`);
+  span.setAttr('http.route', route);
+  // Stash so handlers + processJob can grab the active span.
+  (req as unknown as { _span: Span })._span = span;
+
+  let res: Response;
+  try {
+    res = await handle(req);
+  } catch (err) {
+    const message = (err as Error).message;
+    span.setStatus('error', message);
+    span.event('http.error', { error: message }, 'error');
+    res = new Response(
+      JSON.stringify({ error: 'internal error', traceId: span.traceId }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
+  }
+
+  span.setAttr('http.status_code', res.status);
+  if (res.status >= 500) span.setStatus('error', `HTTP ${res.status}`);
+
   const merged = new Headers(res.headers);
-  for (const [k, v] of Object.entries(rl)) merged.set(k, v);
+  const rl = (req as unknown as { _rl?: Record<string, string> })._rl;
+  if (rl) for (const [k, v] of Object.entries(rl)) merged.set(k, v);
+  for (const [k, v] of Object.entries(traceResponseHeaders(span))) merged.set(k, v);
+
+  log('info', 'http.response', {
+    trace_id: span.traceId,
+    span_id: span.spanId,
+    method: req.method,
+    route,
+    status: res.status,
+    duration_ms: Date.now() - span.startMs,
+  });
+  span.end();
+
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: merged });
 }
 
