@@ -431,19 +431,20 @@ export async function runSIMPGPUMultiLoad(
 
   // ── Persistent buffers ──
   const bytes = N * 4;
-  const densityBuf = buf(device, bytes, STORAGE);
-  const flowA = buf(device, bytes, STORAGE);
-  const flowB = buf(device, bytes, STORAGE);
-  const sensAll = buf(device, bytes * C, STORAGE);
-  const compAll = buf(device, bytes * C, STORAGE);
-  const aggSens = buf(device, bytes, STORAGE);
-  const filtSens = buf(device, bytes, STORAGE);
-  const perCase = buf(device, C * 4, STORAGE);
-  const weightsBuf = buf(device, C * 4, STORAGE);
+  const STO = STORAGE();
+  const densityBuf = buf(device, bytes, STO);
+  const flowA = buf(device, bytes, STO);
+  const flowB = buf(device, bytes, STO);
+  const sensAll = buf(device, bytes * C, STO);
+  const compAll = buf(device, bytes * C, STO);
+  const aggSens = buf(device, bytes, STO);
+  const filtSens = buf(device, bytes, STO);
+  const perCase = buf(device, C * 4, STO);
+  const weightsBuf = buf(device, C * 4, STO);
   // Per-case source/support are uploaded into single shared buffers each case.
-  const sourceMaskBuf = buf(device, bytes, STORAGE);
-  const sourceMagBuf = buf(device, bytes, STORAGE);
-  const supportBuf = buf(device, bytes, STORAGE);
+  const sourceMaskBuf = buf(device, bytes, STO);
+  const sourceMagBuf = buf(device, bytes, STO);
+  const supportBuf = buf(device, bytes, STO);
 
   // ── Uniform buffers ──
   // diffusion params: dims(vec3 u32 padded=16) + 4 floats(16) = 32
