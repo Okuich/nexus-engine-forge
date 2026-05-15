@@ -61,6 +61,12 @@ const ComplianceRequest = z.object({
   supports: z.array(SupportConditionJSON).max(1024).optional(),
 });
 
+const StreamRequest = ComplianceRequest.extend({
+  throttleMs: z.number().min(0).max(5000).optional(),
+  maxIterations: z.number().int().min(1).max(500).optional(),
+  volumeFraction: z.number().min(0.05).max(1).optional(),
+});
+
 
 // ─── HTTP plumbing ─────────────────────────────────────────────────────────
 
