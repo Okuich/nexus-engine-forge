@@ -169,6 +169,32 @@ async function handleGraphQL(req: Request): Promise<Response> {
   return json({ data: { compliance: result } });
 }
 
+async function handleStream(req: Request): Promise<Response> {
+  let raw: unknown;
+  if (req.method === 'GET') {
+    const u = new URL(req.url);
+    const b64 = u.searchParams.get('body');
+    if (!b64) return json({ error: 'missing body query param' }, 400);
+    try { raw = JSON.parse(atob(b64)); }
+    catch { return json({ error: 'invalid base64 JSON body' }, 400); }
+  } else if (req.method === 'POST') {
+    try { raw = await req.json(); }
+    catch { return json({ error: 'invalid JSON body' }, 400); }
+  } else {
+    return json({ error: `method not allowed: ${req.method}` }, 405);
+  }
+  const inner = (raw && typeof raw === 'object' && '$schema' in (raw as object))
+    ? (raw as { data: unknown }).data : raw;
+  const parsed = StreamRequest.safeParse(inner);
+  if (!parsed.success) {
+    return json({ error: 'invalid request', details: parsed.error.flatten() }, 400);
+  }
+  const { throttleMs, maxIterations, volumeFraction, ...complianceReq } = parsed.data;
+  const opts: StreamOptions = { throttleMs, maxIterations, volumeFraction };
+  const stream = buildIterationStream(complianceReq, opts, req.signal);
+  return new Response(stream, { headers: streamHeaders() });
+}
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
