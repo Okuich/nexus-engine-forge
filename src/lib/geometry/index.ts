@@ -249,6 +249,12 @@ export {
   stubTopologyBackend,
   TopologyNotImplementedError,
   TopologyBackendError,
+  // Capability-aware dispatch + integration hooks
+  planDispatch as planTopologyDispatch,
+  adaptFaceAdjacency,
+  adaptEdgeList as adaptTopologyEdgeList,
+  analyzeFaceAdjacency,
+  findCriticalFaces,
 } from './topologyReasoning';
 export type {
   TopologyBackend,
