@@ -153,6 +153,18 @@ export interface SimpRunResultDTO {
   iterations: number;
   converged: boolean;
   history: number[];
+  /** True if the run was stopped early via AbortSignal. */
+  cancelled?: boolean;
+}
+
+/**
+ * Sentinel thrown from `onIteration` to break out of the synchronous SIMP
+ * loop the moment cancellation is requested. `runSIMP` doesn't know about
+ * AbortSignal, so we hijack the per-iteration callback it already invokes —
+ * throwing here unwinds the stack out of `runSIMP` immediately.
+ */
+class SimpCancelled extends Error {
+  constructor() { super('SIMP cancelled'); this.name = 'SimpCancelled'; }
 }
 
 export function subscribeSIMP(
@@ -164,30 +176,47 @@ export function subscribeSIMP(
   streamOptions: StreamOptions = {},
 ): { promise: Promise<SimpRunResultDTO>; cancel: () => void } {
   const throttle = Math.max(1, streamOptions.throttle ?? 1);
-  let cancelled = false;
-  const cancel = () => { cancelled = true; };
-  streamOptions.signal?.addEventListener('abort', cancel);
+  let cancelled = streamOptions.signal?.aborted ?? false;
+  // Track the latest observed state so a cancellation can resolve with a
+  // meaningful partial result instead of throwing data away.
+  let lastState: TopoIterationState | null = null;
+  const history: number[] = [];
 
-  // We thread a maxIterations cap via dynamic shrink on cancel.
+  const cancel = () => { cancelled = true; };
+  if (streamOptions.signal && !cancelled) {
+    streamOptions.signal.addEventListener('abort', cancel, { once: true });
+  }
+
   const userOnIter = options.onIteration;
   const merged: TopoOptimizerOptions = {
     ...options,
     onIteration: (state) => {
       userOnIter?.(state);
-      if (cancelled) return;
-      if ((state.iteration % throttle) === 0) {
+      lastState = state;
+      history.push(state.compliance);
+      if (!cancelled && (state.iteration % throttle) === 0) {
         onSnapshot(toSnapshot(state, domain.dims, streamOptions.preview));
       }
-      if (cancelled) {
-        // Force an early break by throwing — runSIMP catches no exceptions,
-        // so we instead clamp via maxIterations rewrite next call. For now
-        // we just stop emitting; the loop continues but nothing observable
-        // happens. To actually stop, callers should set timeBudgetMs.
-      }
+      // Abort *after* surfacing the snapshot so consumers see the iteration
+      // they just paid for. Throw a typed sentinel to unwind runSIMP now.
+      if (cancelled) throw new SimpCancelled();
     },
   };
 
   const promise = new Promise<SimpRunResultDTO>((resolve, reject) => {
+    if (cancelled) {
+      // Pre-aborted: skip the run entirely.
+      resolve({
+        density: new Float32Array(domain.dims[0] * domain.dims[1] * domain.dims[2]),
+        compliance: Infinity,
+        perCaseCompliance: [],
+        iterations: 0,
+        converged: false,
+        history: [],
+        cancelled: true,
+      });
+      return;
+    }
     try {
       const r = runSIMP(domain, loads, supports, merged);
       resolve({
@@ -197,8 +226,24 @@ export function subscribeSIMP(
         iterations: r.iterations,
         converged: r.converged,
         history: r.history,
+        cancelled: false,
       });
-    } catch (e) { reject(e); }
+    } catch (e) {
+      if (e instanceof SimpCancelled) {
+        const last = lastState;
+        resolve({
+          density: last
+            ? new Float32Array(last.density)
+            : new Float32Array(domain.dims[0] * domain.dims[1] * domain.dims[2]),
+          compliance: last?.compliance ?? Infinity,
+          perCaseCompliance: last?.perCaseCompliance?.slice() ?? [],
+          iterations: last ? last.iteration + 1 : 0,
+          converged: false,
+          history,
+          cancelled: true,
+        });
+      } else reject(e);
+    }
   });
 
   return { promise, cancel };
@@ -209,7 +254,8 @@ export function subscribeSIMP(
 /**
  * Stream per-iteration snapshots via AsyncGenerator. The generator yields
  * each snapshot in order and finally returns the run result. Cancellation
- * via `signal` stops emission at the next iteration boundary.
+ * via `signal` stops the underlying SIMP run on the next iteration boundary
+ * (via a thrown sentinel inside the run callback).
  */
 export async function* streamSIMP(
   domain: VoxelDomain,
@@ -226,14 +272,17 @@ export async function* streamSIMP(
 
   const wake = () => { const w = waiter; waiter = null; w?.(); };
 
-  const { promise } = subscribeSIMP(
-    domain,
-    loads,
-    supports,
-    options,
+  const { promise, cancel } = subscribeSIMP(
+    domain, loads, supports, options,
     (snap) => { queue.push(snap); wake(); },
     streamOptions,
   );
+
+  // Forward external aborts directly to the underlying run.
+  if (streamOptions.signal) {
+    if (streamOptions.signal.aborted) cancel();
+    else streamOptions.signal.addEventListener('abort', () => { cancel(); wake(); }, { once: true });
+  }
 
   promise.then(
     (r) => { result = r; done = true; wake(); },
@@ -241,18 +290,7 @@ export async function* streamSIMP(
   );
 
   while (true) {
-    while (queue.length > 0) {
-      if (streamOptions.signal?.aborted) {
-        // Drain & exit
-        if (!result && !error) {
-          await promise.catch(() => undefined);
-        }
-        if (error) throw error;
-        if (result) return result;
-        throw new Error('aborted before completion');
-      }
-      yield queue.shift()!;
-    }
+    while (queue.length > 0) yield queue.shift()!;
     if (done) break;
     await new Promise<void>((r) => { waiter = r; });
   }
