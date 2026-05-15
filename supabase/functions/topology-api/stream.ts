@@ -103,6 +103,10 @@ export function buildIterationStream(
   const maxIterations = clamp(Math.floor(opts.maxIterations ?? 50), 1, 500);
   const targetVf = clamp(opts.volumeFraction ?? 0.4, 0.05, 1);
 
+  const includeDensity = opts.includeDensity ?? true;
+  const previewN = clamp(Math.floor(opts.previewSize ?? 8), 2, 16);
+  const fullN = clamp(Math.floor(opts.fullSize ?? 24), 4, 48);
+
   const final: ComplianceResult = evaluateCompliance(req);
   const targetCompliance = final.aggregatedCompliance;
   const startCompliance = Math.max(targetCompliance * 8, targetCompliance + 1);
@@ -122,10 +126,13 @@ export function buildIterationStream(
       };
       signal?.addEventListener('abort', onAbort, { once: true });
 
-      // Initial open event lets clients confirm the channel before the first
-      // throttled iteration arrives.
       controller.enqueue(enc.encode(sseEvent('open', envelope('open', {
-        maxIterations, throttleMs, targetVolumeFraction: targetVf,
+        maxIterations,
+        throttleMs,
+        targetVolumeFraction: targetVf,
+        includeDensity,
+        previewDims: includeDensity ? [previewN, previewN, previewN] : undefined,
+        finalDims: includeDensity ? [fullN, fullN, fullN] : undefined,
       }))));
 
       let i = 0;
@@ -134,16 +141,14 @@ export function buildIterationStream(
       const tick = () => {
         if (cancelled) return;
         i += 1;
-        // Exponential decay toward the surrogate target.
         const t = i / maxIterations;
         const decay = Math.exp(-3 * t);
         const compliance = targetCompliance + (startCompliance - targetCompliance) * decay;
-        const perCase = final.perCaseCompliance.map(
-          (c) => c + (c * 8 - c) * decay,
-        );
+        const perCase = final.perCaseCompliance.map((c) => c + (c * 8 - c) * decay);
         const change = Math.abs(prevCompliance - compliance) / Math.max(1e-9, prevCompliance);
         prevCompliance = compliance;
         const vf = 1 - (1 - targetVf) * (1 - decay);
+        const isFinal = i >= maxIterations;
 
         const snap: IterationSnapshot = {
           iteration: i,
@@ -152,7 +157,20 @@ export function buildIterationStream(
           volumeFraction: vf,
           change,
           elapsedMs: Date.now() - startedAt,
+          isFinal,
         };
+
+        if (includeDensity) {
+          if (isFinal) {
+            // Full-resolution density only on the final iteration to keep
+            // intermediate payloads small.
+            snap.density = synthesizeDensity(fullN, vf, decay);
+            snap.dims = [fullN, fullN, fullN];
+          } else {
+            snap.densityPreview = synthesizeDensity(previewN, vf, decay);
+            snap.previewDims = [previewN, previewN, previewN];
+          }
+        }
 
         try {
           controller.enqueue(enc.encode(sseEvent('iteration', envelope('iteration', snap))));
@@ -161,7 +179,7 @@ export function buildIterationStream(
           return;
         }
 
-        if (i >= maxIterations) {
+        if (isFinal) {
           try {
             controller.enqueue(enc.encode(sseEvent('done', envelope('done', final))));
             controller.close();
@@ -171,8 +189,6 @@ export function buildIterationStream(
         timer = setTimeout(tick, throttleMs) as unknown as number;
       };
 
-      // Kick off — first iteration after one throttle tick so clients can
-      // attach handlers between `open` and `iteration`.
       timer = setTimeout(tick, throttleMs) as unknown as number;
     },
     cancel() {
@@ -180,6 +196,33 @@ export function buildIterationStream(
       if (timer !== undefined) clearTimeout(timer);
     },
   });
+}
+
+/**
+ * Cheap deterministic density field for previews: a soft-edged sphere whose
+ * average density tracks `targetVf`, modulated by `decay` to look like a
+ * converging SIMP run. Values quantized to 3 decimals to keep payloads tight.
+ */
+function synthesizeDensity(n: number, targetVf: number, decay: number): number[] {
+  const out = new Array<number>(n * n * n);
+  const c = (n - 1) / 2;
+  // Pick a radius so the sphere volume ≈ targetVf * n^3.
+  const r = Math.cbrt((3 / (4 * Math.PI)) * targetVf) * n;
+  const edge = Math.max(0.5, n * 0.08);
+  let idx = 0;
+  for (let z = 0; z < n; z++) {
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++, idx++) {
+        const d = Math.hypot(x - c, y - c, z - c);
+        const sharp = clamp(0.5 + (r - d) / edge, 0, 1);
+        // Early iterations are mushy (decay≈1 → blend toward targetVf);
+        // late iterations crisp toward the sphere.
+        const v = sharp * (1 - decay) + targetVf * decay;
+        out[idx] = Math.round(v * 1000) / 1000;
+      }
+    }
+  }
+  return out;
 }
 
 function envelope<T>(type: string, data: T) {
