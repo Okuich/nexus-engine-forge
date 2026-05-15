@@ -286,7 +286,8 @@ async function ensureCtx(): Promise<MultiCtx> {
 
 // ─── Buffer helpers ─────────────────────────────────────────────────────────
 
-const STORAGE = (GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
+const STORAGE = (): GPUBufferUsageFlags =>
+  GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
 
 function buf(d: GPUDevice, bytes: number, usage: GPUBufferUsageFlags): GPUBuffer {
   return d.createBuffer({ size: Math.max(16, bytes), usage });
