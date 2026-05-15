@@ -503,11 +503,17 @@ export async function runSIMPGPUMultiLoad(
   const aggSens = buf(device, bytes, STO);
   const filtSens = buf(device, bytes, STO);
   const perCase = buf(device, C * 4, STO);
-  const weightsBuf = buf(device, C * 4, STO);
+  // weightsAgg layout: [0..C-1] = per-case weights consumed by aggregate kernel,
+  // [C] = aggregated compliance scalar. One readback delivers both.
+  const weightsAggBuf = buf(device, (C + 1) * 4, STO);
+  const caseWeightsBuf = buf(device, C * 4, STO);
   // Per-case source/support are uploaded into single shared buffers each case.
   const sourceMaskBuf = buf(device, bytes, STO);
   const sourceMagBuf = buf(device, bytes, STO);
   const supportBuf = buf(device, bytes, STO);
+
+  // Static caseWeights upload (constant for the entire optimization).
+  wF32(device, caseWeightsBuf, new Float32Array(cases.map(c => c.weight)));
 
   // ── Uniform buffers ──
   // diffusion params: dims(vec3 u32 padded=16) + 4 floats(16) = 32
@@ -526,6 +532,14 @@ export async function runSIMPGPUMultiLoad(
   {
     const ab = new ArrayBuffer(16); new Uint32Array(ab).set([N, C]);
     device.queue.writeBuffer(reduceParamsBuf, 0, ab);
+  }
+  // ks-weights params: numCases(u32) mode(u32) ksRho(f32) _pad(u32) = 16
+  const ksParamsBuf = buf(device, 16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
+  {
+    const ab = new ArrayBuffer(16);
+    const u = new Uint32Array(ab); const f = new Float32Array(ab);
+    u[0] = C; u[1] = aggregation === 'ks' ? 1 : 0; f[2] = ksRho; u[3] = 0;
+    device.queue.writeBuffer(ksParamsBuf, 0, ab);
   }
   // aggregate params: n, numCases
   const aggParamsBuf = buf(device, 16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
