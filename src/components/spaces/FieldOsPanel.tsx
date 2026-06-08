@@ -205,9 +205,7 @@ export function FieldOsPanel({ current, target, physics }: Props) {
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Radio className={`h-3.5 w-3.5 ${reachable ? 'text-emerald-400' : 'text-amber-400'}`} />
-              <span className="font-mono text-muted-foreground">
-                {reachable ? `online · v${fos.health?.version ?? '?'}` : 'offline'}
-              </span>
+              <span className="font-mono text-muted-foreground">{statusLabel}</span>
             </div>
           </div>
         </CardHeader>
