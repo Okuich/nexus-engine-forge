@@ -72,7 +72,7 @@ const additive: ProcessEvaluator = (m) => {
 
 const sheetMetal: ProcessEvaluator = (m) => {
   const out: Penalty[] = [];
-  if (m.wall.std > 0.2 || m.wall.thicknessStdMm > 0.2)
+  if (m.wall.thicknessStdMm > 0.2)
     out.push({ amount: 30, feasibilityHit: 0.3, reason: 'Wall thickness varies — sheet metal requires uniform gauge' });
   if (m.wall.meanThicknessMm > 10)
     out.push({ amount: 20, feasibilityHit: 0.2, reason: 'Gauge too thick for typical sheet metal' });
