@@ -123,6 +123,7 @@ type Props = {
 
 export function FieldOsPanel({ current, target, physics }: Props) {
   const fos = useFieldOs();
+  const config = useMemo(() => getFieldOsConfig(), []);
   const arrivalRef = useRef<HTMLCanvasElement>(null);
   const potentialRef = useRef<HTMLCanvasElement>(null);
 
@@ -130,7 +131,15 @@ export function FieldOsPanel({ current, target, physics }: Props) {
   const goal = useMemo(() => snapshotToCell(target), [target]);
   const obstacles = useMemo(() => buildObstacles(physics), [physics]);
 
-  const reachable = !!fos.health && !fos.healthError;
+  const reachable = config.ok && !!fos.health && !fos.healthError;
+  const statusLabel = !config.ok
+    ? config.reason === 'missing'
+      ? 'not configured'
+      : 'misconfigured'
+    : reachable
+      ? `online · v${fos.health?.version ?? '?'}`
+      : 'offline';
+
 
   useEffect(() => {
     if (fos.result && arrivalRef.current) {
