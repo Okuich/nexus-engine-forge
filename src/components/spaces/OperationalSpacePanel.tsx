@@ -67,11 +67,24 @@ export function OperationalSpacePanel({ tenantId, history, current, target, goal
       };
     });
 
-    // Tag each scatter point by which basin its id belongs to.
-    const idToBasin = new Map<string, BasinKind>();
-    for (const b of basins) for (const id of b.members) idToBasin.set(id, b.kind);
+    // Tag each scatter point by the closest basin centroid (basin ids
+    // live in a separate corpus, so we match via vector distance).
     items.forEach((it, idx) => {
-      points[idx].kind = idToBasin.get(it.id) ?? 'stable';
+      let bestKind: BasinKind = 'stable';
+      let bestDist = Infinity;
+      for (const b of basins) {
+        let s = 0;
+        for (let k = 0; k < it.vec.length; k++) {
+          const d = it.vec[k] - b.centroid[k];
+          s += d * d;
+        }
+        const dist = Math.sqrt(s);
+        if (dist < bestDist && dist <= b.radius * 1.5) {
+          bestDist = dist;
+          bestKind = b.kind;
+        }
+      }
+      points[idx].kind = bestKind;
     });
 
     // Current point
