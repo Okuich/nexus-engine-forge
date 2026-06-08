@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Bell, Settings, Cpu, RotateCcw, Droplets, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Activity, Bell, Settings, Cpu, RotateCcw, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { MidwaterLogo } from '@/components/brand/MidwaterLogo';
 import { Sidebar } from './Sidebar';
 import { CADViewer } from './CADViewer';
 import { AnalysisPanel } from './AnalysisPanel';
