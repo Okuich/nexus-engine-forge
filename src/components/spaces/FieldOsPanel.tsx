@@ -212,18 +212,36 @@ export function FieldOsPanel({ current, target, physics }: Props) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!reachable && (
+          {cfgBad ? (
+            <Alert variant="destructive">
+              <AlertTitle>
+                {cfgBad.reason === 'missing'
+                  ? 'Field OS URL not configured'
+                  : 'Field OS URL is invalid'}
+              </AlertTitle>
+              <AlertDescription className="space-y-2 text-xs">
+                <p>{cfgBad.message}</p>
+                <p>
+                  Add to your <code className="font-mono">.env</code>:{' '}
+                  <code className="font-mono">VITE_FIELD_OS_URL="https://&lt;your-field-os-deployment&gt;"</code>,
+                  then restart the dev server.
+                </p>
+              </AlertDescription>
+            </Alert>
+          ) : !reachable ? (
             <Alert variant="destructive">
               <AlertTitle>Field OS API unreachable</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
                 <p>{fos.healthError ?? 'No /api/health response.'}</p>
                 <p>
-                  Set <code className="font-mono">VITE_FIELD_OS_URL</code> to the published Field Core
-                  Intelligence URL, and ensure its <code>/api/op/*</code> routes are deployed.
+                  Verify the deployment at <code className="font-mono">{config.ok ? config.baseUrl : ''}</code>{' '}
+                  is live, that <code>/api/health</code> and <code>/api/op/*</code> routes are deployed,
+                  and that CORS allows this origin.
                 </p>
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
+
 
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground font-mono">
             <span>
