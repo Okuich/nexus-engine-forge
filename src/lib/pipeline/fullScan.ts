@@ -378,13 +378,21 @@ export async function runFullScan(
     (l) => l.status === 'done' || l.status === 'skipped',
   );
 
-  return {
+  const report: FullScanReport = {
     startedAt,
     finishedAt,
     durationMs: finishedAt - startedAt,
     ok,
     layers,
+    meshHash,
+    optsHash,
   };
+
+  // Only cache successful scans so transient failures (e.g. Field OS
+  // 403) can be retried by a subsequent call.
+  if (useWriteCache && ok) putCachedReport(meshHash, optsHash, report);
+
+  return report;
 }
 
 /**
