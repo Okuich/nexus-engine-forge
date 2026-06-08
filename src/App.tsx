@@ -23,6 +23,7 @@ import ROICalculator from "./pages/ROICalculator.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import SpatialDebug from "./pages/SpatialDebug.tsx";
 import TopologyOptimizer from "./pages/TopologyOptimizer.tsx";
+import MetricSpaces from "./pages/MetricSpaces.tsx";
 
 const queryClient = new QueryClient();
 
@@ -71,6 +72,7 @@ function AppRoutes() {
         
         <Route path="/spatial-debug" element={<ProtectedRoute><SpatialDebug /></ProtectedRoute>} />
         <Route path="/topology" element={<ProtectedRoute><TopologyOptimizer /></ProtectedRoute>} />
+        <Route path="/spaces" element={<ProtectedRoute><MetricSpaces /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
