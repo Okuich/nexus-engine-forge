@@ -218,6 +218,22 @@ export async function runFullScan(
   const limiter = opts.limiter ?? getDefaultScanLimiter();
   const emit = opts.onLayerUpdate;
   const grid = Math.max(8, Math.min(128, opts.fieldOsGrid ?? 48));
+  const cacheMode = opts.cache ?? 'rw';
+  const useReadCache = cacheMode === 'rw' || cacheMode === 'r';
+  const useWriteCache = cacheMode === 'rw' || cacheMode === 'w';
+
+  // ── Cache lookup ─────────────────────────────────────────────
+  const meshHash = hashMesh(input.mesh);
+  const optsHash = hashScanOptions({ skip: opts.skip, fieldOsGrid: grid });
+  if (useReadCache) {
+    const cached = getCachedReport(meshHash, optsHash);
+    if (cached) {
+      const replay = markReportAsCached(cached.report);
+      // Emit synthetic layer updates so the UI lights up instantly.
+      for (const l of FULL_SCAN_LAYERS) emit?.(replay.layers[l]);
+      return replay;
+    }
+  }
 
   for (const l of FULL_SCAN_LAYERS) {
     if (skip.has(l)) {
