@@ -44,15 +44,14 @@ function snapshotToCell(s: OperationalSnapshot | null): [number, number] {
 function buildObstacles(physics: PhysicsSnapshot[]): number[] {
   const mask = new Array<number>(GRID * GRID).fill(1);
   for (const p of physics) {
-    // High stress utilization or high thermal load → obstacle blob.
-    const stressRatio = Math.max(
-      p.stress?.yieldRatio ?? 0,
-      p.stress?.utsRatio ?? 0,
-    );
-    const thermalRatio = p.thermal?.peakRatio ?? 0;
+    // High stress utilization (vs material yield) or high thermal load → obstacle blob.
+    const yieldMPa = Math.max(1, p.material?.yieldMPa ?? 1);
+    const maxServiceK = Math.max(1, p.material?.maxServiceK ?? 1);
+    const stressRatio = clamp01((p.stress?.vonMisesMPa ?? 0) / yieldMPa);
+    const thermalRatio = clamp01((p.thermal?.peakK ?? 0) / maxServiceK);
     if (stressRatio < 0.85 && thermalRatio < 0.85) continue;
-    const cx = Math.round(clamp01(stressRatio) * (GRID - 1));
-    const cy = Math.round(clamp01(thermalRatio) * (GRID - 1));
+    const cx = Math.round(stressRatio * (GRID - 1));
+    const cy = Math.round(thermalRatio * (GRID - 1));
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
         const x = cx + dx, y = cy + dy;
