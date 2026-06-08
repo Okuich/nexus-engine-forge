@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppNavSidebar } from "@/components/navigation/AppNavSidebar";
+import { MidwaterLogo } from "@/components/brand/MidwaterLogo";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Signup from "./pages/Signup.tsx";
@@ -33,8 +34,10 @@ function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex w-full">
         <AppNavSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-11 flex items-center border-b border-border bg-card px-2 shrink-0">
+          <header className="h-12 flex items-center gap-3 border-b border-border bg-card px-2 shrink-0">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+            <div className="h-5 w-px bg-border" />
+            <MidwaterLogo size={24} showWordmark />
           </header>
           <main className="flex-1 overflow-hidden">{children}</main>
         </div>
