@@ -42,7 +42,7 @@ export default function Signup() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4">
         <div className="text-center space-y-4 max-w-sm">
-          <Cpu className="w-8 h-8 text-primary mx-auto" />
+          <MidwaterLogo size={48} className="justify-center" />
           <h1 className="text-2xl font-bold text-foreground">Check your email</h1>
           <p className="text-muted-foreground text-sm">We've sent a verification link to <strong className="text-foreground">{email}</strong>. Click it to activate your account.</p>
           <Link to="/login"><Button variant="outline" className="mt-4">Back to login</Button></Link>
