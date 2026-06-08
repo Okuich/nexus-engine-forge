@@ -67,14 +67,11 @@ export function OperationalSpacePanel({ tenantId, history, current, target, goal
       };
     });
 
-    // Tag basin per-point by looking them up.
-    const navPoints = Array.from(
-      (nav as unknown as { points: Map<string, { id: string; basin: BasinKind; value: number }> }).points.values(),
-    );
-    const byVec = new Map(navPoints.map((p) => [p.id, p.basin]));
+    // Tag each scatter point by which basin its id belongs to.
+    const idToBasin = new Map<string, BasinKind>();
+    for (const b of basins) for (const id of b.members) idToBasin.set(id, b.kind);
     items.forEach((it, idx) => {
-      const basin = byVec.get(it.id) ?? 'stable';
-      points[idx].kind = basin;
+      points[idx].kind = idToBasin.get(it.id) ?? 'stable';
     });
 
     // Current point
