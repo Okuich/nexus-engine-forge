@@ -7,9 +7,10 @@ import { CADViewer } from './CADViewer';
 import { AnalysisPanel } from './AnalysisPanel';
 import { CopilotPanel } from './CopilotPanel';
 import { UploadOverlay } from './UploadOverlay';
+import { FullScanPanel } from './FullScanPanel';
 import { useAppStore } from '@/store/appStore';
 
-type RightTab = 'analysis' | 'copilot';
+type RightTab = 'analysis' | 'fullscan' | 'copilot';
 
 export function AppShell() {
   const { demoPhase, setDemoPhase, setUploadedFile, setAnalysisResult, setUploadProgress, setOptimizationResult, setAnalysisError } = useAppStore();
@@ -97,6 +98,7 @@ export function AppShell() {
               <div className="flex border-b border-border shrink-0">
                 {([
                   { key: 'analysis' as const, label: 'Analysis' },
+                  { key: 'fullscan' as const, label: 'Full Scan' },
                   { key: 'copilot' as const, label: 'AI Copilot' },
                 ] as const).map((tab) => (
                   <button
@@ -119,7 +121,9 @@ export function AppShell() {
 
               {/* Tab content */}
               <div className="flex-1 overflow-hidden">
-                {rightTab === 'analysis' ? <AnalysisPanel /> : <CopilotPanel />}
+                {rightTab === 'analysis' && <AnalysisPanel />}
+                {rightTab === 'fullscan' && <FullScanPanel />}
+                {rightTab === 'copilot' && <CopilotPanel />}
               </div>
             </motion.div>
           )}

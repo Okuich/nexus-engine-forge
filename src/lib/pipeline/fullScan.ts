@@ -33,6 +33,13 @@ import {
 } from '@/lib/simulation';
 import { fieldOs, type EikonalResponse, type PoissonResponse } from '@/lib/fieldOs';
 import { createLimiter, type Limiter } from './concurrencyLimiter';
+import {
+  hashMesh,
+  hashScanOptions,
+  getCachedReport,
+  putCachedReport,
+  markReportAsCached,
+} from './scanCache';
 
 // ── Layer identifiers ───────────────────────────────────────────
 export const FULL_SCAN_LAYERS = [
@@ -72,6 +79,8 @@ export interface LayerReport<L extends FullScanLayer = FullScanLayer> {
   durationMs?: number;
   result?: LayerOutput[L];
   error?: { message: string; name?: string };
+  /** True when this layer was served from cache (not recomputed). */
+  cached?: boolean;
 }
 
 export interface FullScanReport {
@@ -80,6 +89,12 @@ export interface FullScanReport {
   durationMs: number;
   ok: boolean;
   layers: Record<FullScanLayer, LayerReport>;
+  /** Fingerprint of the input mesh, populated when cache is enabled. */
+  meshHash?: string;
+  /** Fingerprint of scan options, populated when cache is enabled. */
+  optsHash?: string;
+  /** True when the entire report was served from cache. */
+  cached?: boolean;
 }
 
 
@@ -102,6 +117,8 @@ export interface FullScanOptions {
   signal?: AbortSignal;
   /** Inject a limiter to share budget across files; default = per-call limiter of 4. */
   limiter?: Limiter;
+  /** Cache strategy. Default 'rw' (read+write). 'off' disables both. */
+  cache?: 'off' | 'r' | 'w' | 'rw';
 }
 
 // ── Default shared limiter ──────────────────────────────────────
@@ -208,6 +225,22 @@ export async function runFullScan(
   const limiter = opts.limiter ?? getDefaultScanLimiter();
   const emit = opts.onLayerUpdate;
   const grid = Math.max(8, Math.min(128, opts.fieldOsGrid ?? 48));
+  const cacheMode = opts.cache ?? 'rw';
+  const useReadCache = cacheMode === 'rw' || cacheMode === 'r';
+  const useWriteCache = cacheMode === 'rw' || cacheMode === 'w';
+
+  // ── Cache lookup ─────────────────────────────────────────────
+  const meshHash = hashMesh(input.mesh);
+  const optsHash = hashScanOptions({ skip: opts.skip, fieldOsGrid: grid });
+  if (useReadCache) {
+    const cached = getCachedReport(meshHash, optsHash);
+    if (cached) {
+      const replay = markReportAsCached(cached.report);
+      // Emit synthetic layer updates so the UI lights up instantly.
+      for (const l of FULL_SCAN_LAYERS) emit?.(replay.layers[l]);
+      return replay;
+    }
+  }
 
   for (const l of FULL_SCAN_LAYERS) {
     if (skip.has(l)) {
@@ -345,13 +378,21 @@ export async function runFullScan(
     (l) => l.status === 'done' || l.status === 'skipped',
   );
 
-  return {
+  const report: FullScanReport = {
     startedAt,
     finishedAt,
     durationMs: finishedAt - startedAt,
     ok,
     layers,
+    meshHash,
+    optsHash,
   };
+
+  // Only cache successful scans so transient failures (e.g. Field OS
+  // 403) can be retried by a subsequent call.
+  if (useWriteCache && ok) putCachedReport(meshHash, optsHash, report);
+
+  return report;
 }
 
 /**
