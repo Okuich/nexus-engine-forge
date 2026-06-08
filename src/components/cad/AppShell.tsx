@@ -7,9 +7,10 @@ import { CADViewer } from './CADViewer';
 import { AnalysisPanel } from './AnalysisPanel';
 import { CopilotPanel } from './CopilotPanel';
 import { UploadOverlay } from './UploadOverlay';
+import { FullScanPanel } from './FullScanPanel';
 import { useAppStore } from '@/store/appStore';
 
-type RightTab = 'analysis' | 'copilot';
+type RightTab = 'analysis' | 'fullscan' | 'copilot';
 
 export function AppShell() {
   const { demoPhase, setDemoPhase, setUploadedFile, setAnalysisResult, setUploadProgress, setOptimizationResult, setAnalysisError } = useAppStore();
