@@ -33,6 +33,13 @@ import {
 } from '@/lib/simulation';
 import { fieldOs, type EikonalResponse, type PoissonResponse } from '@/lib/fieldOs';
 import { createLimiter, type Limiter } from './concurrencyLimiter';
+import {
+  hashMesh,
+  hashScanOptions,
+  getCachedReport,
+  putCachedReport,
+  markReportAsCached,
+} from './scanCache';
 
 // ── Layer identifiers ───────────────────────────────────────────
 export const FULL_SCAN_LAYERS = [
