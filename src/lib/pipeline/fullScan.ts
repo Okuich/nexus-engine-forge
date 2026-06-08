@@ -246,16 +246,16 @@ export async function runFullScan(
         'computationalGeometry',
         () => {
           const topology = analyzeTopology(input.mesh);
-          // BVH build is best-effort; small meshes use uniform grid.
-          let kind = 'bvh';
+          let kind: 'bvh' | 'octree' | 'none' = 'bvh';
           let built = false;
           try {
-            buildSpatialIndex(input.mesh, { kind: 'bvh' });
+            const idx = buildSpatialIndex(input.mesh, 'mixed');
+            kind = idx.kind;
             built = true;
           } catch {
             try {
-              buildSpatialIndex(input.mesh, { kind: 'kdtree' });
-              kind = 'kdtree';
+              const idx = buildSpatialIndex(input.mesh, 'point-query');
+              kind = idx.kind;
               built = true;
             } catch {
               built = false;
@@ -297,7 +297,11 @@ export async function runFullScan(
         }
         await runLayer(
           'physicsOs',
-          () => runSimulation(features, defaultStructuralConfig([0])),
+          () =>
+            runSimulation(
+              features as unknown as Parameters<typeof runSimulation>[0],
+              defaultStructuralConfig([0]),
+            ),
           limiter,
           layers,
           emit,
