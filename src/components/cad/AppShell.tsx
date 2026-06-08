@@ -33,12 +33,7 @@ export function AppShell() {
         className="h-11 border-b border-border flex items-center justify-between px-4 shrink-0 bg-card"
       >
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Droplets className="w-4.5 h-4.5 text-primary" />
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              mid<span className="text-primary">water</span>
-            </span>
-          </div>
+          <MidwaterLogo size={22} showWordmark />
           <div className="w-px h-5 bg-border" />
           <span className="text-xs text-muted-foreground font-mono">v1.0</span>
         </div>
