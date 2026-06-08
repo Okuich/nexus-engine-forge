@@ -22,6 +22,7 @@ import {
   Building2,
   Check,
   ChevronsUpDown,
+  Compass,
   FlaskConical,
   Workflow,
   ShieldCheck,
@@ -51,6 +52,7 @@ interface NavItem {
 
 const engineeringItems: NavItem[] = [
   { title: 'CAD Workspace', url: '/', icon: Box, permissions: ['cad:view'] },
+  { title: 'Metric Spaces', url: '/spaces', icon: Compass, permissions: ['cad:view'] },
 ];
 
 const mlItems: NavItem[] = [

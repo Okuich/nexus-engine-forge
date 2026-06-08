@@ -36,7 +36,7 @@ export const PRODUCT_CATALOG: Record<Product, ProductMeta> = {
 
 /** Routes owned by each product */
 export const PRODUCT_ROUTES: Record<Product, readonly string[]> = {
-  midwater: ['/', '/ml', '/pipeline', '/ml/evaluation', '/marketplace', '/prospects', '/crm'],
+  midwater: ['/', '/ml', '/pipeline', '/ml/evaluation', '/marketplace', '/prospects', '/crm', '/spaces'],
 };
 
 /** Admin route is shared / product-agnostic */
