@@ -187,7 +187,7 @@ function buildParts(tenantId: string): CadModel[] {
         planarFaceCount: Math.round(jitter(20)),
         meanCurvature: jitter(0.4),
       },
-      wallThickness: {
+      wall: {
         minThicknessMm: jitter(1.5),
         meanThicknessMm: jitter(3),
         thicknessStdMm: jitter(0.5),
@@ -226,6 +226,7 @@ function buildPhysics(tenantId: string): PhysicsSnapshot[] {
     return {
       id: `${tenantId}-phys-${i}`,
       material: {
+        family: 'steel',
         yieldMPa: 250,
         utsMPa: 400,
         enduranceMPa: 200,
@@ -234,14 +235,13 @@ function buildPhysics(tenantId: string): PhysicsSnapshot[] {
       },
       stress: {
         vonMisesMPa: 250 * stressLevel * (0.9 + rng() * 0.2),
-        principalMaxMPa: 280 * stressLevel,
-        principalMinMPa: -60 * stressLevel,
+        principalMPa: 280 * stressLevel,
       },
       strain: { equivalent: 0.002 * stressLevel, plastic: stressLevel > 1 ? 0.002 : 0 },
       thermal: {
         peakK: 380 * (0.9 + rng() * 0.2),
         meanK: 320,
-        gradientKPerMm: 2 * stressLevel,
+        gradientKperMm: 2 * stressLevel,
       },
       vibration: {
         forcingHz: 90,
@@ -251,8 +251,8 @@ function buildPhysics(tenantId: string): PhysicsSnapshot[] {
       flow: {
         reynolds: 5e5,
         pressureDropPa: 8e4 * stressLevel,
-        velocityMps: 12,
-        separationDetected: stressLevel > 1,
+        peakVelocity: 12,
+        separation: stressLevel > 1,
       },
       fatigue: {
         amplitudeMPa: 80 * stressLevel,
