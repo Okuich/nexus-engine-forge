@@ -40,11 +40,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Cpu className="w-6 h-6 text-primary" />
-            <span className="text-lg font-bold tracking-tight text-foreground">
-              FORGE<span className="text-primary">CAD</span>
-            </span>
+          <div className="flex items-center justify-center mb-4">
+            <MidwaterLogo size={56} showWordmark />
           </div>
           <h1 className="text-2xl font-bold text-foreground">Sign in</h1>
           <p className="text-sm text-muted-foreground">Enter your credentials to continue</p>
