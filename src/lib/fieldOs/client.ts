@@ -1,6 +1,8 @@
 /**
  * Field OS client — thin fetch wrapper over the Field Core Intelligence
- * HTTP API. Base URL comes from `VITE_FIELD_OS_URL`.
+ * HTTP API with Zod-validated requests and responses.
+ *
+ * Base URL comes from `VITE_FIELD_OS_URL`.
  *
  * Endpoints (TanStack Start API routes):
  *   POST  {base}/api/op/eikonal
@@ -9,8 +11,16 @@
  *   GET   {base}/api/health
  */
 
+import type { z, ZodTypeAny } from 'zod';
+import { FieldOsError } from './types';
 import {
-  FieldOsError,
+  EikonalRequestSchema,
+  EikonalResponseSchema,
+  FieldOsHealthSchema,
+  LaplacianRequestSchema,
+  LaplacianResponseSchema,
+  PoissonRequestSchema,
+  PoissonResponseSchema,
   type EikonalRequest,
   type EikonalResponse,
   type FieldOsHealth,
@@ -18,16 +28,18 @@ import {
   type LaplacianResponse,
   type PoissonRequest,
   type PoissonResponse,
-} from './types';
+} from './schemas';
 
 const HEALTH_TIMEOUT_MS = 6000;
 const OP_TIMEOUT_MS = 30000;
 
+// ── Config ──────────────────────────────────────────────────────
 export type FieldOsConfigStatus =
   | { ok: true; baseUrl: string }
   | { ok: false; reason: 'missing' | 'invalid'; message: string; raw?: string };
 
-/** Inspect the configured base URL without throwing. */
+type BadCfg = Extract<FieldOsConfigStatus, { ok: false }>;
+
 export function getFieldOsConfig(): FieldOsConfigStatus {
   const env = (import.meta as unknown as { env?: Record<string, string> }).env;
   const raw = env?.VITE_FIELD_OS_URL?.trim();
@@ -64,10 +76,11 @@ export function getFieldOsConfig(): FieldOsConfigStatus {
 
 export function getFieldOsBaseUrl(): string {
   const cfg = getFieldOsConfig();
-  if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
+  if (cfg.ok !== true) throw new FieldOsError((cfg as BadCfg).message);
   return cfg.baseUrl;
 }
 
+// ── Helpers ─────────────────────────────────────────────────────
 function describeFetchError(url: string, err: unknown): string {
   const msg = (err as Error)?.message ?? String(err);
   if ((err as Error)?.name === 'AbortError') {
@@ -83,7 +96,12 @@ function describeFetchError(url: string, err: unknown): string {
   return `Field OS request failed at ${url}: ${msg}`;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, externalSignal?: AbortSignal) {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+) {
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();
   externalSignal?.addEventListener('abort', onAbort);
@@ -96,9 +114,42 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-async function post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal): Promise<TRes> {
+function validate<S extends ZodTypeAny>(
+  schema: S,
+  value: unknown,
+  context: string,
+): z.infer<S> {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => ({
+      path: i.path as (string | number)[],
+      message: i.message,
+    }));
+    const preview = issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('; ');
+    throw new FieldOsError(
+      `${context} failed schema validation: ${preview}${issues.length > 3 ? ` (+${issues.length - 3} more)` : ''}`,
+      { issues },
+    );
+  }
+  return parsed.data as z.infer<S>;
+}
+
+// ── Core POST with validation ───────────────────────────────────
+async function postValidated<TReqSchema extends ZodTypeAny, TResSchema extends ZodTypeAny>(
+  path: string,
+  reqSchema: TReqSchema,
+  resSchema: TResSchema,
+  body: z.input<TReqSchema>,
+  signal?: AbortSignal,
+): Promise<z.infer<TResSchema>> {
   const cfg = getFieldOsConfig();
-  if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
+  if (cfg.ok !== true) throw new FieldOsError((cfg as BadCfg).message);
+
+  const validatedBody = validate(reqSchema, body, `${path} request`);
+
   const url = `${cfg.baseUrl}${path}`;
   let res: Response;
   try {
@@ -107,7 +158,7 @@ async function post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal):
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(validatedBody),
       },
       OP_TIMEOUT_MS,
       signal,
@@ -115,6 +166,7 @@ async function post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal):
   } catch (err) {
     throw new FieldOsError(describeFetchError(url, err));
   }
+
   const text = await res.text();
   if (!res.ok) {
     const hint =
@@ -122,35 +174,46 @@ async function post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal):
         ? ` — endpoint not found. Make sure ${path} is deployed in Field OS.`
         : res.status === 405
           ? ' — method not allowed. The route exists but does not accept POST.'
-          : res.status >= 500
-            ? ' — server error. Check Field OS logs.'
-            : '';
+          : res.status === 422 || res.status === 400
+            ? ' — Field OS rejected the request payload.'
+            : res.status >= 500
+              ? ' — server error. Check Field OS logs.'
+              : '';
     throw new FieldOsError(
       `Field OS ${path} failed (${res.status})${hint}: ${text.slice(0, 240)}`,
-      res.status,
+      { status: res.status },
     );
   }
+
+  let json: unknown;
   try {
-    return JSON.parse(text) as TRes;
+    json = JSON.parse(text);
   } catch {
     throw new FieldOsError(
       `Field OS ${path} returned non-JSON (got "${text.slice(0, 80)}…"). ` +
         `This usually means the URL points at the SPA shell instead of the API.`,
     );
   }
+  return validate(resSchema, json, `${path} response`);
 }
 
+// ── Public API ──────────────────────────────────────────────────
 export const fieldOs = {
   config: getFieldOsConfig,
   baseUrl: getFieldOsBaseUrl,
 
   health: async (signal?: AbortSignal): Promise<FieldOsHealth> => {
     const cfg = getFieldOsConfig();
-    if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
+    if (cfg.ok !== true) throw new FieldOsError((cfg as BadCfg).message);
     const url = `${cfg.baseUrl}/api/health`;
     let res: Response;
     try {
-      res = await fetchWithTimeout(url, { headers: { accept: 'application/json' } }, HEALTH_TIMEOUT_MS, signal);
+      res = await fetchWithTimeout(
+        url,
+        { headers: { accept: 'application/json' } },
+        HEALTH_TIMEOUT_MS,
+        signal,
+      );
     } catch (err) {
       throw new FieldOsError(describeFetchError(url, err));
     }
@@ -158,27 +221,29 @@ export const fieldOs = {
       throw new FieldOsError(
         `Field OS health check failed (${res.status}). ` +
           `Verify /api/health is deployed at ${cfg.baseUrl}.`,
-        res.status,
+        { status: res.status },
       );
     }
     const text = await res.text();
+    let json: unknown;
     try {
-      return JSON.parse(text) as FieldOsHealth;
+      json = JSON.parse(text);
     } catch {
       throw new FieldOsError(
         `Field OS /api/health returned non-JSON. The URL likely points at the SPA shell, not the API.`,
       );
     }
+    return validate(FieldOsHealthSchema, json, '/api/health response');
   },
 
   eikonal: (req: EikonalRequest, signal?: AbortSignal) =>
-    post<EikonalRequest, EikonalResponse>('/api/op/eikonal', req, signal),
+    postValidated('/api/op/eikonal', EikonalRequestSchema, EikonalResponseSchema, req, signal),
 
   poisson: (req: PoissonRequest, signal?: AbortSignal) =>
-    post<PoissonRequest, PoissonResponse>('/api/op/poisson', req, signal),
+    postValidated('/api/op/poisson', PoissonRequestSchema, PoissonResponseSchema, req, signal),
 
   laplacian: (req: LaplacianRequest, signal?: AbortSignal) =>
-    post<LaplacianRequest, LaplacianResponse>('/api/op/laplacian', req, signal),
+    postValidated('/api/op/laplacian', LaplacianRequestSchema, LaplacianResponseSchema, req, signal),
 };
 
 export type {
