@@ -72,6 +72,8 @@ export interface LayerReport<L extends FullScanLayer = FullScanLayer> {
   durationMs?: number;
   result?: LayerOutput[L];
   error?: { message: string; name?: string };
+  /** True when this layer was served from cache (not recomputed). */
+  cached?: boolean;
 }
 
 export interface FullScanReport {
@@ -80,6 +82,12 @@ export interface FullScanReport {
   durationMs: number;
   ok: boolean;
   layers: Record<FullScanLayer, LayerReport>;
+  /** Fingerprint of the input mesh, populated when cache is enabled. */
+  meshHash?: string;
+  /** Fingerprint of scan options, populated when cache is enabled. */
+  optsHash?: string;
+  /** True when the entire report was served from cache. */
+  cached?: boolean;
 }
 
 
