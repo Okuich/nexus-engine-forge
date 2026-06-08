@@ -132,13 +132,16 @@ export function FieldOsPanel({ current, target, physics }: Props) {
   const obstacles = useMemo(() => buildObstacles(physics), [physics]);
 
   const reachable = config.ok && !!fos.health && !fos.healthError;
-  const statusLabel = !config.ok
-    ? config.reason === 'missing'
+  const configReason = !config.ok ? config.reason : null;
+  const configMessage = !config.ok ? config.message : null;
+  const statusLabel = configReason
+    ? configReason === 'missing'
       ? 'not configured'
       : 'misconfigured'
     : reachable
       ? `online · v${fos.health?.version ?? '?'}`
       : 'offline';
+
 
 
   useEffect(() => {
