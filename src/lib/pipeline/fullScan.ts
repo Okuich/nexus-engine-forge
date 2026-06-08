@@ -110,6 +110,8 @@ export interface FullScanOptions {
   signal?: AbortSignal;
   /** Inject a limiter to share budget across files; default = per-call limiter of 4. */
   limiter?: Limiter;
+  /** Cache strategy. Default 'rw' (read+write). 'off' disables both. */
+  cache?: 'off' | 'r' | 'w' | 'rw';
 }
 
 // ── Default shared limiter ──────────────────────────────────────
