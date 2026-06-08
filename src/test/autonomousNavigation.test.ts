@@ -53,7 +53,7 @@ describe('AutonomousNavigationEngine', () => {
   let engine: AutonomousNavigationEngine;
   beforeEach(() => {
     ticker = 0;
-    engine = new AutonomousNavigationEngine({ config: { minBasinSize: 2, basinRadius: 0.6 } });
+    engine = new AutonomousNavigationEngine({ config: { minBasinSize: 2, basinRadius: 0.25 } });
   });
 
   it('ingests snapshots into the manifold', () => {
