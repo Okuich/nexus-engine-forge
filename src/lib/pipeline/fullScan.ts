@@ -79,8 +79,9 @@ export interface FullScanReport {
   finishedAt: number;
   durationMs: number;
   ok: boolean;
-  layers: { [L in FullScanLayer]: LayerReport<L> };
+  layers: Record<FullScanLayer, LayerReport>;
 }
+
 
 // ── Inputs / options ────────────────────────────────────────────
 export interface FullScanInput {
@@ -166,11 +167,11 @@ async function runLayer<L extends FullScanLayer>(
   layer: L,
   fn: () => Promise<LayerOutput[L]> | LayerOutput[L],
   limiter: Limiter,
-  layers: FullScanReport['layers'],
+  layers: Record<FullScanLayer, LayerReport>,
   emit?: (r: LayerReport) => void,
 ): Promise<void> {
-  const update = (patch: Partial<LayerReport<L>>) => {
-    layers[layer] = { ...layers[layer], ...patch } as LayerReport<L>;
+  const update = (patch: Partial<LayerReport>) => {
+    layers[layer] = { ...layers[layer], ...patch, layer } as LayerReport;
     emit?.(layers[layer]);
   };
   update({ status: 'running', startedAt: performance.now() });
@@ -181,7 +182,7 @@ async function runLayer<L extends FullScanLayer>(
       status: 'done',
       finishedAt,
       durationMs: finishedAt - (layers[layer].startedAt ?? finishedAt),
-      result,
+      result: result as LayerReport['result'],
     });
   } catch (err) {
     const finishedAt = performance.now();
@@ -194,6 +195,7 @@ async function runLayer<L extends FullScanLayer>(
     });
   }
 }
+
 
 // ── Public API ──────────────────────────────────────────────────
 export async function runFullScan(
