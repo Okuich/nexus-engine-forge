@@ -23,6 +23,7 @@ import { ManufacturabilitySpacePanel } from '@/components/spaces/Manufacturabili
 import { PhysicsSpacePanel } from '@/components/spaces/PhysicsSpacePanel';
 import { OptimizationGeometryPanel } from '@/components/spaces/OptimizationGeometryPanel';
 import { RoiGatingPanel } from '@/components/spaces/RoiGatingPanel';
+import { FieldOsPanel } from '@/components/spaces/FieldOsPanel';
 import type { OptimizationGoal } from '@/lib/optimizationGeometry';
 
 const GOALS: { value: OptimizationGoal; label: string }[] = [
@@ -91,6 +92,7 @@ export default function MetricSpaces() {
             <TabsTrigger value="physics">Physics</TabsTrigger>
             <TabsTrigger value="optimization">Optimization</TabsTrigger>
             <TabsTrigger value="roi">ROI Gating</TabsTrigger>
+            <TabsTrigger value="field-os">Field OS</TabsTrigger>
           </TabsList>
 
           <TabsContent value="operational">
@@ -122,6 +124,13 @@ export default function MetricSpaces() {
                 physics: spaces.physics,
                 goal,
               }}
+            />
+          </TabsContent>
+          <TabsContent value="field-os">
+            <FieldOsPanel
+              current={spaces.current}
+              target={spaces.target}
+              physics={spaces.physics}
             />
           </TabsContent>
         </Tabs>
