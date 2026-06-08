@@ -46,7 +46,7 @@ export type FullScanLayer = (typeof FULL_SCAN_LAYERS)[number];
 // ── Layer result shapes ─────────────────────────────────────────
 export interface ComputationalGeometryResult {
   topology: TopologyReport;
-  spatialIndex: { kind: string; built: boolean };
+  spatialIndex: { kind: 'bvh' | 'octree' | 'none'; built: boolean };
 }
 
 export interface FieldOsLayerResult {
