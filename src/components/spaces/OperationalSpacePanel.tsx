@@ -58,14 +58,11 @@ export function OperationalSpacePanel({ tenantId, history, current, target, goal
 
     const points: ScatterPoint[] = items.map((it, i) => {
       const p = map.get(it.id)!;
-      const navPoint = Array.from(nav['points' as keyof AutonomousNavigationEngine] as Map<string, { value: number; basin: BasinKind }>).find(([, v]) => v && v.value !== undefined);
-      // Simpler: read basin from updated points
-      const basin: BasinKind = (history[i] === current ? 'stable' : 'stable');
       return {
         id: it.id,
         x: p.x,
         y: p.y,
-        kind: basin,
+        kind: 'stable' as BasinKind,
         label: history[i].snapshotAt.slice(0, 10),
       };
     });
