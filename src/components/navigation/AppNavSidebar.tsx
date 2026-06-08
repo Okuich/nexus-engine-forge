@@ -125,6 +125,11 @@ export function AppNavSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
+      <SidebarHeader className="bg-card border-b border-border">
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <MidwaterLogo size={28} showWordmark={!collapsed} />
+        </div>
+      </SidebarHeader>
       <SidebarContent className="bg-card">
         {/* Tenant switcher at top when multiple tenants */}
         {hasMultipleTenants && (
