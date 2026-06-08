@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Activity, Loader2, Radio, Waves } from 'lucide-react';
 import { useFieldOs } from '@/hooks/useFieldOs';
+import { getFieldOsConfig } from '@/lib/fieldOs';
 import type { OperationalSnapshot } from '@/lib/operationalState';
 import type { PhysicsSnapshot } from '@/lib/physicsConstrained';
 
