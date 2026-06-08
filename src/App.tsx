@@ -8,6 +8,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppNavSidebar } from "@/components/navigation/AppNavSidebar";
 import { MidwaterLogo } from "@/components/brand/MidwaterLogo";
+import { ThemeToggle } from "@/components/brand/ThemeToggle";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Signup from "./pages/Signup.tsx";
@@ -38,6 +39,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             <div className="h-5 w-px bg-border" />
             <MidwaterLogo size={24} showWordmark />
+            <div className="ml-auto flex items-center gap-1">
+              <ThemeToggle />
+            </div>
           </header>
           <main className="flex-1 overflow-hidden">{children}</main>
         </div>
