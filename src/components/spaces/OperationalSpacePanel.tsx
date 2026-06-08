@@ -138,17 +138,39 @@ export function OperationalSpacePanel({ tenantId, history, current, target, goal
       ];
     }
 
-    // Basin regions
-    const allItemsForBasins = items.map((i) => ({ id: i.id, vec: i.vec }));
-    const projForRegions = project2D(`op-${tenantId}`, allItemsForBasins);
-    const projMap = new Map(projForRegions.map((p) => [p.id, p]));
-    const regions: ScatterRegion[] = basins.map((b) => {
-      const memberProj = b.members.map((id) => projMap.get(id)).filter(Boolean) as { x: number; y: number }[];
-      const cx = memberProj.reduce((s, p) => s + p.x, 0) / Math.max(1, memberProj.length);
-      const cy = memberProj.reduce((s, p) => s + p.y, 0) / Math.max(1, memberProj.length);
-      const r = Math.max(...memberProj.map((p) => Math.hypot(p.x - cx, p.y - cy)), 0.05);
-      return { id: b.id, cx, cy, r, kind: b.kind, label: b.kind };
-    });
+    // Basin regions: assign each item to its closest basin (by raw vec
+    // distance), then collapse onto the 2D projection used by points.
+    const finalProj = new Map(points.map((p) => [p.id, { x: p.x, y: p.y }]));
+    const regions: ScatterRegion[] = basins
+      .map((b) => {
+        const proj: { x: number; y: number }[] = [];
+        items.forEach((it) => {
+          let bestIdx = -1;
+          let bestDist = Infinity;
+          basins.forEach((bb, idx) => {
+            let s = 0;
+            for (let k = 0; k < it.vec.length; k++) {
+              const d = it.vec[k] - bb.centroid[k];
+              s += d * d;
+            }
+            const dist = Math.sqrt(s);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestIdx = idx;
+            }
+          });
+          if (basins[bestIdx] === b) {
+            const fp = finalProj.get(it.id);
+            if (fp) proj.push(fp);
+          }
+        });
+        if (proj.length === 0) return null;
+        const cx = proj.reduce((s, p) => s + p.x, 0) / proj.length;
+        const cy = proj.reduce((s, p) => s + p.y, 0) / proj.length;
+        const r = Math.max(...proj.map((p) => Math.hypot(p.x - cx, p.y - cy)), 0.04);
+        return { id: b.id, cx, cy, r, kind: b.kind, label: b.kind } as ScatterRegion;
+      })
+      .filter(Boolean) as ScatterRegion[];
 
     return { points, trajectories, regions, similar, basins, path };
   }, [tenantId, history, current, target, goal]);
