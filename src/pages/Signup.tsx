@@ -4,7 +4,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Cpu, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { MidwaterLogo } from '@/components/brand/MidwaterLogo';
 import { toast } from 'sonner';
 
 export default function Signup() {
@@ -41,7 +42,7 @@ export default function Signup() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4">
         <div className="text-center space-y-4 max-w-sm">
-          <Cpu className="w-8 h-8 text-primary mx-auto" />
+          <MidwaterLogo size={48} className="justify-center" />
           <h1 className="text-2xl font-bold text-foreground">Check your email</h1>
           <p className="text-muted-foreground text-sm">We've sent a verification link to <strong className="text-foreground">{email}</strong>. Click it to activate your account.</p>
           <Link to="/login"><Button variant="outline" className="mt-4">Back to login</Button></Link>
@@ -54,11 +55,8 @@ export default function Signup() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Cpu className="w-6 h-6 text-primary" />
-            <span className="text-lg font-bold tracking-tight text-foreground">
-              FORGE<span className="text-primary">CAD</span>
-            </span>
+          <div className="flex items-center justify-center mb-4">
+            <MidwaterLogo size={56} showWordmark />
           </div>
           <h1 className="text-2xl font-bold text-foreground">Create account</h1>
           <p className="text-sm text-muted-foreground">Set up your organization</p>
