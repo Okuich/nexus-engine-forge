@@ -1,7 +1,6 @@
 /**
  * Field OS client — thin fetch wrapper over the Field Core Intelligence
- * HTTP API. Base URL is configured via `VITE_FIELD_OS_URL`; falls back
- * to the published Field OS Lovable preview if unset.
+ * HTTP API. Base URL comes from `VITE_FIELD_OS_URL`.
  *
  * Endpoints (TanStack Start API routes):
  *   POST  {base}/api/op/eikonal
@@ -21,54 +20,155 @@ import {
   type PoissonResponse,
 } from './types';
 
-const DEFAULT_BASE =
-  'https://preview--d49fa3ac-a383-4fec-b9a9-7a8d88266fe1.lovable.app';
+const HEALTH_TIMEOUT_MS = 6000;
+const OP_TIMEOUT_MS = 30000;
 
-export function getFieldOsBaseUrl(): string {
+export type FieldOsConfigStatus =
+  | { ok: true; baseUrl: string }
+  | { ok: false; reason: 'missing' | 'invalid'; message: string; raw?: string };
+
+/** Inspect the configured base URL without throwing. */
+export function getFieldOsConfig(): FieldOsConfigStatus {
   const env = (import.meta as unknown as { env?: Record<string, string> }).env;
   const raw = env?.VITE_FIELD_OS_URL?.trim();
-  return (raw && raw.length > 0 ? raw : DEFAULT_BASE).replace(/\/+$/, '');
+  if (!raw) {
+    return {
+      ok: false,
+      reason: 'missing',
+      message:
+        'VITE_FIELD_OS_URL is not set. Add it to your environment, e.g. ' +
+        'VITE_FIELD_OS_URL="https://<your-field-os-deployment>".',
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return {
+      ok: false,
+      reason: 'invalid',
+      raw,
+      message: `VITE_FIELD_OS_URL is not a valid URL: "${raw}". Expected an absolute http(s) URL.`,
+    };
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return {
+      ok: false,
+      reason: 'invalid',
+      raw,
+      message: `VITE_FIELD_OS_URL must use http(s); got "${parsed.protocol}".`,
+    };
+  }
+  return { ok: true, baseUrl: raw.replace(/\/+$/, '') };
+}
+
+export function getFieldOsBaseUrl(): string {
+  const cfg = getFieldOsConfig();
+  if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
+  return cfg.baseUrl;
+}
+
+function describeFetchError(url: string, err: unknown): string {
+  const msg = (err as Error)?.message ?? String(err);
+  if ((err as Error)?.name === 'AbortError') {
+    return `Field OS request timed out at ${url}. The deployment may be cold-starting or unreachable.`;
+  }
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    return (
+      `Field OS unreachable at ${url}. ` +
+      `Check that the deployment is live, that VITE_FIELD_OS_URL is correct, ` +
+      `and that the server allows CORS from this origin.`
+    );
+  }
+  return `Field OS request failed at ${url}: ${msg}`;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, externalSignal?: AbortSignal) {
+  const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort();
+  externalSignal?.addEventListener('abort', onAbort);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', onAbort);
+  }
 }
 
 async function post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal): Promise<TRes> {
-  const url = `${getFieldOsBaseUrl()}${path}`;
+  const cfg = getFieldOsConfig();
+  if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
+  const url = `${cfg.baseUrl}${path}`;
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+    res = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(body),
+      },
+      OP_TIMEOUT_MS,
       signal,
-    });
-  } catch (err) {
-    throw new FieldOsError(
-      `Field OS unreachable at ${url}: ${(err as Error).message}`,
     );
+  } catch (err) {
+    throw new FieldOsError(describeFetchError(url, err));
   }
   const text = await res.text();
   if (!res.ok) {
+    const hint =
+      res.status === 404
+        ? ` — endpoint not found. Make sure ${path} is deployed in Field OS.`
+        : res.status === 405
+          ? ' — method not allowed. The route exists but does not accept POST.'
+          : res.status >= 500
+            ? ' — server error. Check Field OS logs.'
+            : '';
     throw new FieldOsError(
-      `Field OS ${path} failed (${res.status}): ${text.slice(0, 240)}`,
+      `Field OS ${path} failed (${res.status})${hint}: ${text.slice(0, 240)}`,
       res.status,
     );
   }
   try {
     return JSON.parse(text) as TRes;
   } catch {
-    throw new FieldOsError(`Field OS ${path} returned non-JSON: ${text.slice(0, 240)}`);
+    throw new FieldOsError(
+      `Field OS ${path} returned non-JSON (got "${text.slice(0, 80)}…"). ` +
+        `This usually means the URL points at the SPA shell instead of the API.`,
+    );
   }
 }
 
 export const fieldOs = {
+  config: getFieldOsConfig,
   baseUrl: getFieldOsBaseUrl,
 
   health: async (signal?: AbortSignal): Promise<FieldOsHealth> => {
-    const url = `${getFieldOsBaseUrl()}/api/health`;
-    const res = await fetch(url, { signal }).catch((err) => {
-      throw new FieldOsError(`Field OS unreachable: ${(err as Error).message}`);
-    });
-    if (!res.ok) throw new FieldOsError(`Field OS health ${res.status}`, res.status);
-    return (await res.json()) as FieldOsHealth;
+    const cfg = getFieldOsConfig();
+    if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
+    const url = `${cfg.baseUrl}/api/health`;
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(url, { headers: { accept: 'application/json' } }, HEALTH_TIMEOUT_MS, signal);
+    } catch (err) {
+      throw new FieldOsError(describeFetchError(url, err));
+    }
+    if (!res.ok) {
+      throw new FieldOsError(
+        `Field OS health check failed (${res.status}). ` +
+          `Verify /api/health is deployed at ${cfg.baseUrl}.`,
+        res.status,
+      );
+    }
+    const text = await res.text();
+    try {
+      return JSON.parse(text) as FieldOsHealth;
+    } catch {
+      throw new FieldOsError(
+        `Field OS /api/health returned non-JSON. The URL likely points at the SPA shell, not the API.`,
+      );
+    }
   },
 
   eikonal: (req: EikonalRequest, signal?: AbortSignal) =>
@@ -81,5 +181,13 @@ export const fieldOs = {
     post<LaplacianRequest, LaplacianResponse>('/api/op/laplacian', req, signal),
 };
 
-export type { EikonalRequest, EikonalResponse, PoissonRequest, PoissonResponse, LaplacianRequest, LaplacianResponse, FieldOsHealth };
+export type {
+  EikonalRequest,
+  EikonalResponse,
+  PoissonRequest,
+  PoissonResponse,
+  LaplacianRequest,
+  LaplacianResponse,
+  FieldOsHealth,
+};
 export { FieldOsError };

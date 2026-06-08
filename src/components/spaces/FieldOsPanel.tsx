@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Activity, Loader2, Radio, Waves } from 'lucide-react';
 import { useFieldOs } from '@/hooks/useFieldOs';
+import { getFieldOsConfig } from '@/lib/fieldOs';
 import type { OperationalSnapshot } from '@/lib/operationalState';
 import type { PhysicsSnapshot } from '@/lib/physicsConstrained';
 
@@ -122,6 +123,7 @@ type Props = {
 
 export function FieldOsPanel({ current, target, physics }: Props) {
   const fos = useFieldOs();
+  const config = useMemo(() => getFieldOsConfig(), []);
   const arrivalRef = useRef<HTMLCanvasElement>(null);
   const potentialRef = useRef<HTMLCanvasElement>(null);
 
@@ -129,7 +131,18 @@ export function FieldOsPanel({ current, target, physics }: Props) {
   const goal = useMemo(() => snapshotToCell(target), [target]);
   const obstacles = useMemo(() => buildObstacles(physics), [physics]);
 
-  const reachable = !!fos.health && !fos.healthError;
+  const reachable = config.ok && !!fos.health && !fos.healthError;
+  const cfgBad = !config.ok ? (config as { ok: false; reason: 'missing' | 'invalid'; message: string }) : null;
+  const statusLabel = cfgBad
+    ? cfgBad.reason === 'missing'
+      ? 'not configured'
+      : 'misconfigured'
+    : reachable
+      ? `online · v${fos.health?.version ?? '?'}`
+      : 'offline';
+
+
+
 
   useEffect(() => {
     if (fos.result && arrivalRef.current) {
@@ -192,25 +205,41 @@ export function FieldOsPanel({ current, target, physics }: Props) {
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Radio className={`h-3.5 w-3.5 ${reachable ? 'text-emerald-400' : 'text-amber-400'}`} />
-              <span className="font-mono text-muted-foreground">
-                {reachable ? `online · v${fos.health?.version ?? '?'}` : 'offline'}
-              </span>
+              <span className="font-mono text-muted-foreground">{statusLabel}</span>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!reachable && (
+          {cfgBad ? (
+            <Alert variant="destructive">
+              <AlertTitle>
+                {cfgBad.reason === 'missing'
+                  ? 'Field OS URL not configured'
+                  : 'Field OS URL is invalid'}
+              </AlertTitle>
+              <AlertDescription className="space-y-2 text-xs">
+                <p>{cfgBad.message}</p>
+                <p>
+                  Add to your <code className="font-mono">.env</code>:{' '}
+                  <code className="font-mono">VITE_FIELD_OS_URL="https://&lt;your-field-os-deployment&gt;"</code>,
+                  then restart the dev server.
+                </p>
+              </AlertDescription>
+            </Alert>
+          ) : !reachable ? (
             <Alert variant="destructive">
               <AlertTitle>Field OS API unreachable</AlertTitle>
               <AlertDescription className="space-y-2 text-xs">
                 <p>{fos.healthError ?? 'No /api/health response.'}</p>
                 <p>
-                  Set <code className="font-mono">VITE_FIELD_OS_URL</code> to the published Field Core
-                  Intelligence URL, and ensure its <code>/api/op/*</code> routes are deployed.
+                  Verify the deployment at <code className="font-mono">{config.ok ? config.baseUrl : ''}</code>{' '}
+                  is live, that <code>/api/health</code> and <code>/api/op/*</code> routes are deployed,
+                  and that CORS allows this origin.
                 </p>
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
+
 
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground font-mono">
             <span>
