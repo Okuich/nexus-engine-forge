@@ -64,7 +64,7 @@ export function getFieldOsConfig(): FieldOsConfigStatus {
 
 export function getFieldOsBaseUrl(): string {
   const cfg = getFieldOsConfig();
-  if (!cfg.ok) { const m = cfg.message; throw new FieldOsError(m); }
+  if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
   return cfg.baseUrl;
 }
 
@@ -98,7 +98,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 
 async function post<TReq, TRes>(path: string, body: TReq, signal?: AbortSignal): Promise<TRes> {
   const cfg = getFieldOsConfig();
-  if (!cfg.ok) { const m = cfg.message; throw new FieldOsError(m); }
+  if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
   const url = `${cfg.baseUrl}${path}`;
   let res: Response;
   try {
@@ -146,7 +146,7 @@ export const fieldOs = {
 
   health: async (signal?: AbortSignal): Promise<FieldOsHealth> => {
     const cfg = getFieldOsConfig();
-    if (!cfg.ok) { const m = cfg.message; throw new FieldOsError(m); }
+    if (cfg.ok !== true) throw new FieldOsError((cfg as Extract<FieldOsConfigStatus, { ok: false }>).message);
     const url = `${cfg.baseUrl}/api/health`;
     let res: Response;
     try {
