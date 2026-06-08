@@ -28,9 +28,13 @@ function clamp01(x: number) {
 }
 
 function snapshotToCell(s: OperationalSnapshot | null): [number, number] {
-  if (!s) return [GRID / 2, GRID / 2];
-  const x = clamp01(s.metrics.throughput ?? 0.5);
-  const y = clamp01(1 - (s.metrics.uptime ?? 0.5));
+  if (!s) return [Math.floor(GRID / 2), Math.floor(GRID / 2)];
+  // x axis = throughput efficiency, y axis = downtime pressure
+  const x = clamp01(s.throughput?.cycleEfficiency ?? s.throughput?.oee ?? 0.5);
+  const downtime =
+    (s.downtime?.unplannedHrs24 ?? 0) /
+    Math.max(1, (s.downtime?.unplannedHrs24 ?? 0) + (s.downtime?.plannedHrs24 ?? 1));
+  const y = clamp01(downtime);
   return [
     Math.min(GRID - 1, Math.max(0, Math.round(x * (GRID - 1)))),
     Math.min(GRID - 1, Math.max(0, Math.round(y * (GRID - 1)))),
@@ -40,11 +44,15 @@ function snapshotToCell(s: OperationalSnapshot | null): [number, number] {
 function buildObstacles(physics: PhysicsSnapshot[]): number[] {
   const mask = new Array<number>(GRID * GRID).fill(1);
   for (const p of physics) {
-    const feas = p.feasibility?.safetyFactor ?? 1;
-    if (feas >= 1) continue;
-    // Map physics sample into the same 2D plane as a coarse blob.
-    const cx = Math.round(clamp01(p.normalized?.stress ?? 0.5) * (GRID - 1));
-    const cy = Math.round(clamp01(p.normalized?.thermal ?? 0.5) * (GRID - 1));
+    // High stress utilization or high thermal load → obstacle blob.
+    const stressRatio = Math.max(
+      p.stress?.yieldRatio ?? 0,
+      p.stress?.utsRatio ?? 0,
+    );
+    const thermalRatio = p.thermal?.peakRatio ?? 0;
+    if (stressRatio < 0.85 && thermalRatio < 0.85) continue;
+    const cx = Math.round(clamp01(stressRatio) * (GRID - 1));
+    const cy = Math.round(clamp01(thermalRatio) * (GRID - 1));
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
         const x = cx + dx, y = cy + dy;
