@@ -1,0 +1,24 @@
+[package]
+name = "database_adapter"
+version = "0.1.0"
+edition = "2021"
+description = "Midwater storage adapter — archives fractional drift coefficients and polynomial coordinates into partitioned PostgreSQL with automated anomaly alerting."
+license = "Proprietary"
+
+[lib]
+name = "database_adapter"
+path = "database_adapter.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
+deadpool-postgres = "0.14"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[lints.rust]
+unsafe_code = "forbid"
